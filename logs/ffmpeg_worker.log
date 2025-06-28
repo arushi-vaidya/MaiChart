@@ -1,0 +1,18 @@
+2025-06-29 00:45:14,908 - ffmpeg_worker - INFO - Worker initialized: ffmpeg_worker_43652
+2025-06-29 00:45:14,908 - ffmpeg_worker - INFO - Starting ffmpeg_worker...
+2025-06-29 00:45:15,072 - ffmpeg_worker - INFO - Processing message 1751133533128-0
+2025-06-29 00:45:15,072 - ffmpeg_worker - ERROR - Failed to process message 1751133533128-0
+2025-06-29 00:45:15,072 - ffmpeg_worker - INFO - Processing message 1751133533203-0
+2025-06-29 00:45:15,072 - ffmpeg_worker - ERROR - Failed to process message 1751133533203-0
+2025-06-29 00:45:15,073 - ffmpeg_worker - INFO - Processing message 1751136939072-0
+2025-06-29 00:45:15,076 - ffmpeg_worker - ERROR - Failed to process message 1751136939072-0
+2025-06-29 00:45:26,034 - ffmpeg_worker - INFO - Processing message 1751138126033-0
+2025-06-29 00:45:26,237 - ffmpeg_worker - INFO - Message 1751138126033-0 processed and acknowledged
+2025-06-29 00:47:42,749 - ffmpeg_worker - INFO - Received signal 2, shutting down gracefully...
+2025-06-29 00:47:42,930 - ffmpeg_worker - INFO - ffmpeg_worker stopped
+2025-06-28 19:18:54,360 - ffmpeg_worker - INFO - Worker initialized: ffmpeg_worker_1
+2025-06-28 19:18:54,361 - ffmpeg_worker - INFO - Starting ffmpeg_worker...
+2025-06-28 19:19:20,251 - ffmpeg_worker - INFO - Processing message 1751138360250-0
+2025-06-28 19:19:20,397 - ffmpeg_worker - INFO - Message 1751138360250-0 processed and acknowledged
+2025-06-28 19:19:50,422 - ffmpeg_worker - INFO - Received signal 15, shutting down gracefully...
+2025-06-28 19:19:50,839 - ffmpeg_worker - INFO - ffmpeg_worker stopped

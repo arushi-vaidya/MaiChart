@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Recorder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Audio Recorder</h1>
+        
+        <button id="recordButton" class="record-button">
+            <span id="recordText">Record</span>
+        </button>
+        
+        <div id="timer" class="timer">00:00</div>
+        
+        <div id="uploadProgress" class="upload-progress">
+            <div id="uploadProgressBar" class="upload-progress-bar"></div>
+        </div>
+        
+        <div id="status" class="status info">
+            Click the button to start recording
+        </div>
+        
+        <div class="controls">
+            <button id="playButton" class="control-button" style="display: none;">
+                Play Last Recording
+            </button>
+            <button id="downloadButton" class="control-button" style="display: none;">
+                Download WAV
+            </button>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/audio-recorder.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: audio_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  web:
+    build: .
+    container_name: audio_web
+    ports:
+      - "5001:5001"
+    volumes:
+      - "./uploads:/app/uploads"
+      - "./processed_audio:/app/processed_audio"
+      - "./logs:/app/logs"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - FLASK_PORT=5001
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: python app.py
+
+  ffmpeg_worker:
+    build: .
+    container_name: audio_ffmpeg_worker
+    volumes:
+      - "./uploads:/app/uploads"
+      - "./processed_audio:/app/processed_audio"
+      - "./logs:/app/logs"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: python workers/ffmpeg_worker.py
+    restart: unless-stopped
+
+volumes:
+  redis_data:
