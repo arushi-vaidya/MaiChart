@@ -8,14 +8,6 @@ A complete audio capture and processing system that records audio in the browser
 Browser (MediaRecorder) → Flask API → Redis Stream → FFmpeg Worker → WAV File
 ```
 
-## Features
-
-- **Modern Frontend**: Clean, responsive audio recorder with real-time feedback
-- **Scalable Backend**: Flask API with Redis streaming for worker coordination
-- **Audio Processing**: FFmpeg-powered conversion to high-quality WAV format
-- **Modular Design**: Separate files for easy debugging and maintenance
-- **Docker Support**: Complete containerized deployment
-
 ## File Structure
 
 ```
@@ -108,41 +100,6 @@ The system will be available at `http://localhost:5001`
 5. **Open Browser**:
    Navigate to `http://localhost:5001`
 
-## Usage
-
-1. **Record Audio**: Click the red record button to start recording
-2. **Stop Recording**: Click the button again to stop and upload
-3. **Monitor Progress**: Watch the status updates in real-time
-4. **Access Results**: Processed WAV files are saved in `processed_audio/`
-
-## API Endpoints
-
-### `POST /api/upload_audio`
-Upload audio file for processing
-- **Body**: FormData with `audio` file and `timestamp`
-- **Response**: Session ID and processing details
-
-### `GET /api/status/<session_id>`
-Check processing status
-- **Response**: Current status, progress, and results
-
-### `GET /api/download/<session_id>`
-Download processed WAV file
-- **Response**: WAV file download
-
-### `GET /api/health`
-System health check
-- **Response**: Service status and Redis connectivity
-
-## Configuration
-
-### Environment Variables
-
-- `REDIS_HOST`: Redis server host (default: localhost)
-- `REDIS_PORT`: Redis server port (default: 6379)
-- `UPLOAD_FOLDER`: Directory for uploaded files (default: uploads)
-- `OUTPUT_FOLDER`: Directory for processed files (default: processed_audio)
-
 ### Audio Settings
 
 The system is configured for:
@@ -151,25 +108,6 @@ The system is configured for:
 - **Max File Size**: 50MB
 - **Supported Formats**: WebM, WAV, MP3, OGG, M4A
 
-## Development Timeline
-
-### June 28-30: Basic Infrastructure ✅
-- [x] MediaRecorder frontend with modern UI
-- [x] Flask backend with file upload
-- [x] Redis stream integration
-- [x] Basic error handling and status updates
-
-### July 1-3: Stream Processing ✅
-- [x] Redis Stream audio_input setup
-- [x] FFmpeg worker with conversion logic
-- [x] Session status tracking
-- [x] End-to-end message flow
-
-### July 4: Testing & Optimization ✅
-- [x] Complete end-to-end test
-- [x] Docker containerization
-- [x] System monitoring and health checks
-- [x] Documentation and setup automation
 
 ## Testing
 
@@ -186,51 +124,6 @@ This will test:
 - ✅ Audio processing pipeline
 - ✅ Status monitoring
 
-## Troubleshooting
-
-### Common Issues
-
-1. **Redis Connection Failed**
-   ```bash
-   # Start Redis
-   redis-server
-   # Or use Docker
-   docker run -d -p 6379:6379 redis:alpine
-   ```
-
-2. **FFmpeg Not Found**
-   ```bash
-   # Ubuntu/Debian
-   sudo apt install ffmpeg
-   # macOS
-   brew install ffmpeg
-   ```
-
-3. **Microphone Access Denied**
-   - Ensure HTTPS or localhost
-   - Check browser permissions
-   - Try different browser
-
-4. **Upload Fails**
-   - Check file size limits
-   - Verify network connectivity
-   - Check server logs
-
-### Debug Mode
-
-Enable detailed logging:
-
-```bash
-export FLASK_DEBUG=1
-python app.py
-```
-
-## Performance
-
-- **Concurrent Processing**: Multiple workers can run simultaneously
-- **Memory Efficient**: Streaming architecture with minimal memory usage
-- **Scalable**: Redis-based coordination supports horizontal scaling
-- **Fast Conversion**: FFmpeg optimized for audio processing
 
 ## License
 
