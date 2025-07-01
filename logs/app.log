@@ -1,0 +1,246 @@
+2025-07-01 18:39:54,108 INFO: Audio Processing System startup [in /app/app.py:105]
+2025-07-01 18:39:54,108 INFO: System Configuration: [in /app/app.py:117]
+2025-07-01 18:39:54,109 INFO: Max file size: 500MB [in /app/app.py:118]
+2025-07-01 18:39:54,109 INFO: Allowed extensions: {'webm', 'ogg', 'flac', 'mp3', 'mp4', 'aac', 'm4a', 'wav'} [in /app/app.py:119]
+2025-07-01 18:39:54,110 INFO: Output format: pcm_s16le @ 44100Hz [in /app/app.py:120]
+2025-07-01 18:39:54,118 INFO: Redis connection established [in /app/app.py:43]
+2025-07-01 18:39:54,118 INFO: Starting Flask application with optimizations... [in /app/app.py:125]
+2025-07-01 18:39:54,118 INFO: Upload folder: /app/uploads [in /app/app.py:126]
+2025-07-01 18:39:54,119 INFO: Processed folder: /app/processed_audio [in /app/app.py:127]
+2025-07-01 18:39:54,119 INFO: Max file size: 500MB [in /app/app.py:128]
+2025-07-01 18:40:00,338 ERROR: Exception on / [GET] [in /usr/local/lib/python3.11/site-packages/flask/app.py:1414]
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 2189, in wsgi_app
+    ctx.push()
+  File "/usr/local/lib/python3.11/site-packages/flask/ctx.py", line 377, in push
+    self.session = session_interface.open_session(self.app, self.request)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 309, in open_session
+    s = self.get_signing_serializer(app)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 301, in get_signing_serializer
+    return URLSafeTimedSerializer(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/serializer.py", line 210, in __init__
+    self.secret_keys: list[bytes] = _make_keys_list(secret_key)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/signer.py", line 73, in _make_keys_list
+    return [want_bytes(s) for s in secret_key]  # pyright: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'property' object is not iterable
+2025-07-01 18:40:00,344 ERROR: Internal server error: 500 Internal Server Error: The server encountered an internal error and was unable to complete your request. Either the server is overloaded or there is an error in the application. [in /app/app.py:60]
+2025-07-01 18:40:00,345 ERROR: Request finalizing failed with an error while handling an error [in /usr/local/lib/python3.11/site-packages/flask/app.py:1515]
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 2189, in wsgi_app
+    ctx.push()
+  File "/usr/local/lib/python3.11/site-packages/flask/ctx.py", line 377, in push
+    self.session = session_interface.open_session(self.app, self.request)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 309, in open_session
+    s = self.get_signing_serializer(app)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 301, in get_signing_serializer
+    return URLSafeTimedSerializer(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/serializer.py", line 210, in __init__
+    self.secret_keys: list[bytes] = _make_keys_list(secret_key)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/signer.py", line 73, in _make_keys_list
+    return [want_bytes(s) for s in secret_key]  # pyright: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'property' object is not iterable
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 1508, in finalize_request
+    response = self.process_response(response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 2005, in process_response
+    self.session_interface.save_session(self, ctx.session, response)
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 333, in save_session
+    if session.accessed:
+       ^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'accessed'
+2025-07-01 18:40:06,190 ERROR: Exception on / [GET] [in /usr/local/lib/python3.11/site-packages/flask/app.py:1414]
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 2189, in wsgi_app
+    ctx.push()
+  File "/usr/local/lib/python3.11/site-packages/flask/ctx.py", line 377, in push
+    self.session = session_interface.open_session(self.app, self.request)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 309, in open_session
+    s = self.get_signing_serializer(app)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 301, in get_signing_serializer
+    return URLSafeTimedSerializer(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/serializer.py", line 210, in __init__
+    self.secret_keys: list[bytes] = _make_keys_list(secret_key)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/signer.py", line 73, in _make_keys_list
+    return [want_bytes(s) for s in secret_key]  # pyright: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'property' object is not iterable
+2025-07-01 18:40:06,191 ERROR: Internal server error: 500 Internal Server Error: The server encountered an internal error and was unable to complete your request. Either the server is overloaded or there is an error in the application. [in /app/app.py:60]
+2025-07-01 18:40:06,192 ERROR: Request finalizing failed with an error while handling an error [in /usr/local/lib/python3.11/site-packages/flask/app.py:1515]
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 2189, in wsgi_app
+    ctx.push()
+  File "/usr/local/lib/python3.11/site-packages/flask/ctx.py", line 377, in push
+    self.session = session_interface.open_session(self.app, self.request)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 309, in open_session
+    s = self.get_signing_serializer(app)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 301, in get_signing_serializer
+    return URLSafeTimedSerializer(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/serializer.py", line 210, in __init__
+    self.secret_keys: list[bytes] = _make_keys_list(secret_key)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/signer.py", line 73, in _make_keys_list
+    return [want_bytes(s) for s in secret_key]  # pyright: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'property' object is not iterable
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 1508, in finalize_request
+    response = self.process_response(response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 2005, in process_response
+    self.session_interface.save_session(self, ctx.session, response)
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 333, in save_session
+    if session.accessed:
+       ^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'accessed'
+2025-07-01 18:42:22,862 INFO: Audio Processing System startup [in /app/app.py:105]
+2025-07-01 18:42:22,862 INFO: System Configuration: [in /app/app.py:117]
+2025-07-01 18:42:22,863 INFO: Max file size: 500MB [in /app/app.py:118]
+2025-07-01 18:42:22,863 INFO: Allowed extensions: {'wav', 'mp4', 'ogg', 'm4a', 'mp3', 'webm', 'flac', 'aac'} [in /app/app.py:119]
+2025-07-01 18:42:22,863 INFO: Output format: pcm_s16le @ 44100Hz [in /app/app.py:120]
+2025-07-01 18:42:22,867 INFO: Redis connection established [in /app/app.py:43]
+2025-07-01 18:42:22,867 INFO: Starting Flask application with optimizations... [in /app/app.py:125]
+2025-07-01 18:42:22,868 INFO: Upload folder: /app/uploads [in /app/app.py:126]
+2025-07-01 18:42:22,868 INFO: Processed folder: /app/processed_audio [in /app/app.py:127]
+2025-07-01 18:42:22,868 INFO: Max file size: 500MB [in /app/app.py:128]
+2025-07-01 18:43:05,399 INFO: Audio Processing System startup [in /app/app.py:105]
+2025-07-01 18:43:05,400 INFO: System Configuration: [in /app/app.py:117]
+2025-07-01 18:43:05,400 INFO: Max file size: 500MB [in /app/app.py:118]
+2025-07-01 18:43:05,400 INFO: Allowed extensions: {'webm', 'ogg', 'wav', 'm4a', 'flac', 'mp4', 'mp3', 'aac'} [in /app/app.py:119]
+2025-07-01 18:43:05,400 INFO: Output format: pcm_s16le @ 44100Hz [in /app/app.py:120]
+2025-07-01 18:43:05,404 INFO: Redis connection established [in /app/app.py:43]
+2025-07-01 18:43:05,405 INFO: Starting Flask application with optimizations... [in /app/app.py:125]
+2025-07-01 18:43:05,405 INFO: Upload folder: /app/uploads [in /app/app.py:126]
+2025-07-01 18:43:05,405 INFO: Processed folder: /app/processed_audio [in /app/app.py:127]
+2025-07-01 18:43:05,405 INFO: Max file size: 500MB [in /app/app.py:128]
+2025-07-01 18:43:08,024 ERROR: Exception on / [GET] [in /usr/local/lib/python3.11/site-packages/flask/app.py:1414]
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 2189, in wsgi_app
+    ctx.push()
+  File "/usr/local/lib/python3.11/site-packages/flask/ctx.py", line 377, in push
+    self.session = session_interface.open_session(self.app, self.request)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 309, in open_session
+    s = self.get_signing_serializer(app)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 301, in get_signing_serializer
+    return URLSafeTimedSerializer(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/serializer.py", line 210, in __init__
+    self.secret_keys: list[bytes] = _make_keys_list(secret_key)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/signer.py", line 73, in _make_keys_list
+    return [want_bytes(s) for s in secret_key]  # pyright: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'property' object is not iterable
+2025-07-01 18:43:08,027 ERROR: Internal server error: 500 Internal Server Error: The server encountered an internal error and was unable to complete your request. Either the server is overloaded or there is an error in the application. [in /app/app.py:60]
+2025-07-01 18:43:08,028 ERROR: Request finalizing failed with an error while handling an error [in /usr/local/lib/python3.11/site-packages/flask/app.py:1515]
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 2189, in wsgi_app
+    ctx.push()
+  File "/usr/local/lib/python3.11/site-packages/flask/ctx.py", line 377, in push
+    self.session = session_interface.open_session(self.app, self.request)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 309, in open_session
+    s = self.get_signing_serializer(app)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 301, in get_signing_serializer
+    return URLSafeTimedSerializer(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/serializer.py", line 210, in __init__
+    self.secret_keys: list[bytes] = _make_keys_list(secret_key)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/signer.py", line 73, in _make_keys_list
+    return [want_bytes(s) for s in secret_key]  # pyright: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'property' object is not iterable
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 1508, in finalize_request
+    response = self.process_response(response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 2005, in process_response
+    self.session_interface.save_session(self, ctx.session, response)
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 333, in save_session
+    if session.accessed:
+       ^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'accessed'
+2025-07-01 18:43:10,353 ERROR: Exception on / [GET] [in /usr/local/lib/python3.11/site-packages/flask/app.py:1414]
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 2189, in wsgi_app
+    ctx.push()
+  File "/usr/local/lib/python3.11/site-packages/flask/ctx.py", line 377, in push
+    self.session = session_interface.open_session(self.app, self.request)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 309, in open_session
+    s = self.get_signing_serializer(app)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 301, in get_signing_serializer
+    return URLSafeTimedSerializer(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/serializer.py", line 210, in __init__
+    self.secret_keys: list[bytes] = _make_keys_list(secret_key)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/signer.py", line 73, in _make_keys_list
+    return [want_bytes(s) for s in secret_key]  # pyright: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'property' object is not iterable
+2025-07-01 18:43:10,355 ERROR: Internal server error: 500 Internal Server Error: The server encountered an internal error and was unable to complete your request. Either the server is overloaded or there is an error in the application. [in /app/app.py:60]
+2025-07-01 18:43:10,355 ERROR: Request finalizing failed with an error while handling an error [in /usr/local/lib/python3.11/site-packages/flask/app.py:1515]
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 2189, in wsgi_app
+    ctx.push()
+  File "/usr/local/lib/python3.11/site-packages/flask/ctx.py", line 377, in push
+    self.session = session_interface.open_session(self.app, self.request)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 309, in open_session
+    s = self.get_signing_serializer(app)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 301, in get_signing_serializer
+    return URLSafeTimedSerializer(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/serializer.py", line 210, in __init__
+    self.secret_keys: list[bytes] = _make_keys_list(secret_key)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/itsdangerous/signer.py", line 73, in _make_keys_list
+    return [want_bytes(s) for s in secret_key]  # pyright: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'property' object is not iterable
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 1508, in finalize_request
+    response = self.process_response(response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/app.py", line 2005, in process_response
+    self.session_interface.save_session(self, ctx.session, response)
+  File "/usr/local/lib/python3.11/site-packages/flask/sessions.py", line 333, in save_session
+    if session.accessed:
+       ^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'accessed'

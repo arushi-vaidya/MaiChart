@@ -20,7 +20,7 @@
         <section class="main-section">
             <div class="title-section">
                 <h1 class="main-title">Medical Voice Notes</h1>
-                <p class="subtitle">Record medical appointment notes and get AI-powered summaries</p>
+                <p class="subtitle">Record audio or upload files for AI-powered medical note processing</p>
             </div>
 
             <!-- Action Buttons -->
@@ -32,7 +32,7 @@
                     ⏹️ Stop Recording
                 </button>
                 <button id="uploadRecording" class="btn btn-outline">
-                    📁 Upload Recording
+                    📁 Upload Audio File
                 </button>
                 <button id="saveNote" class="btn btn-success">
                     💾 Save Note
@@ -44,12 +44,19 @@
 
             <!-- Status -->
             <div id="status" class="status-indicator info">
-                Click "Start Recording" to begin recording your medical notes
+                Click "Start Recording" to record or "Upload Audio File" to upload an existing audio file
             </div>
 
             <!-- Upload Progress -->
             <div id="uploadProgress" class="upload-progress">
                 <div id="uploadProgressBar" class="upload-progress-bar"></div>
+            </div>
+
+            <!-- File Format Info -->
+            <div style="margin-top: 2rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; color: #6b7280; font-size: 0.9rem;">
+                <p><strong>Supported formats:</strong> WebM, WAV, MP3, OGG, M4A</p>
+                <p><strong>Maximum file size:</strong> 50MB</p>
+                <p><strong>Output format:</strong> WAV (16-bit, 44.1kHz, mono)</p>
             </div>
         </section>
     </div>

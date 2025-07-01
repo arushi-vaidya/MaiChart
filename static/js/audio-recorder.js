@@ -18,7 +18,19 @@ class AudioRecorder {
         this.uploadProgress = document.getElementById('uploadProgress');
         this.uploadProgressBar = document.getElementById('uploadProgressBar');
         
+        // Create hidden file input
+        this.fileInput = this.createFileInput();
+        
         this.init();
+    }
+    
+    createFileInput() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'audio/*,.webm,.wav,.mp3,.ogg,.m4a';
+        input.style.display = 'none';
+        document.body.appendChild(input);
+        return input;
     }
     
     init() {
@@ -32,15 +44,150 @@ class AudioRecorder {
             this.stopRecording();
         });
         
-        // Upload Button (placeholder for now)
+        // Upload Button - now functional
         this.uploadBtn.addEventListener('click', () => {
-            this.updateStatus('Upload functionality will be added later', 'info');
+            this.selectFileForUpload();
+        });
+        
+        // File input change handler
+        this.fileInput.addEventListener('change', (event) => {
+            if (event.target.files.length > 0) {
+                this.handleFileUpload(event.target.files[0]);
+            }
         });
         
         // Save Button (placeholder for now)
         this.saveBtn.addEventListener('click', () => {
             this.updateStatus('Save functionality will be added later', 'info');
         });
+    }
+    
+    selectFileForUpload() {
+        // Trigger file selection dialog
+        this.fileInput.click();
+    }
+    
+    async handleFileUpload(file) {
+        try {
+            // Validate file
+            if (!this.validateFile(file)) {
+                return;
+            }
+            
+            this.updateStatus(`Selected file: ${file.name} (${this.formatFileSize(file.size)})`, 'info');
+            
+            // Upload the file
+            await this.uploadAudioFile(file);
+            
+        } catch (error) {
+            console.error('File upload error:', error);
+            this.updateStatus('Error uploading file. Please try again.', 'error');
+        }
+    }
+    
+    validateFile(file) {
+        const maxSize = 50 * 1024 * 1024; // 50MB
+        const allowedTypes = ['audio/webm', 'audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/m4a'];
+        const allowedExtensions = ['.webm', '.wav', '.mp3', '.ogg', '.m4a'];
+        
+        // Check file size
+        if (file.size > maxSize) {
+            this.updateStatus('File too large. Maximum size is 50MB.', 'error');
+            return false;
+        }
+        
+        // Check file type and extension
+        const fileName = file.name.toLowerCase();
+        const hasValidExtension = allowedExtensions.some(ext => fileName.endsWith(ext));
+        const hasValidType = allowedTypes.includes(file.type);
+        
+        if (!hasValidExtension && !hasValidType) {
+            this.updateStatus('Invalid file type. Please select an audio file (.webm, .wav, .mp3, .ogg, .m4a)', 'error');
+            return false;
+        }
+        
+        return true;
+    }
+    
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
+    async uploadAudioFile(file) {
+        try {
+            this.updateStatus('Uploading file...', 'info');
+            this.showUploadProgress();
+            
+            const formData = new FormData();
+            formData.append('audio', file, file.name);
+            formData.append('timestamp', Date.now().toString());
+            
+            // Create XMLHttpRequest to track upload progress
+            const xhr = new XMLHttpRequest();
+            
+            // Track upload progress
+            xhr.upload.addEventListener('progress', (event) => {
+                if (event.lengthComputable) {
+                    const percentComplete = (event.loaded / event.total) * 100;
+                    this.updateUploadProgress(percentComplete);
+                }
+            });
+            
+            // Handle completion
+            const uploadPromise = new Promise((resolve, reject) => {
+                xhr.addEventListener('load', () => {
+                    if (xhr.status === 200) {
+                        try {
+                            const result = JSON.parse(xhr.responseText);
+                            resolve(result);
+                        } catch (e) {
+                            reject(new Error('Invalid response format'));
+                        }
+                    } else {
+                        reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
+                    }
+                });
+                
+                xhr.addEventListener('error', () => {
+                    reject(new Error('Upload failed due to network error'));
+                });
+                
+                xhr.addEventListener('timeout', () => {
+                    reject(new Error('Upload timed out'));
+                });
+            });
+            
+            // Start upload
+            xhr.open('POST', '/api/upload_audio');
+            xhr.timeout = 300000; // 5 minutes timeout
+            xhr.send(formData);
+            
+            // Wait for completion
+            const result = await uploadPromise;
+            
+            console.log('Upload successful:', result);
+            this.lastSessionId = result.id;
+            this.updateStatus(`Upload successful! Processing...`, 'success');
+            
+            // Monitor processing status
+            this.monitorProcessing(result.id);
+            
+        } catch (error) {
+            console.error('Upload error:', error);
+            this.updateStatus('Upload failed. Please try again.', 'error');
+        } finally {
+            this.hideUploadProgress();
+        }
+    }
+    
+    updateUploadProgress(percent) {
+        this.uploadProgressBar.style.width = `${percent}%`;
     }
     
     async startRecording() {
@@ -83,6 +230,7 @@ class AudioRecorder {
             // Update UI
             this.startBtn.style.display = 'none';
             this.stopBtn.style.display = 'flex';
+            this.uploadBtn.disabled = true; // Disable upload while recording
             this.timerDisplay.style.display = 'block';
             this.updateStatus('Recording... Click "Stop Recording" when finished', 'info');
             
@@ -108,6 +256,7 @@ class AudioRecorder {
             // Update UI
             this.startBtn.style.display = 'flex';
             this.stopBtn.style.display = 'none';
+            this.uploadBtn.disabled = false; // Re-enable upload
             this.timerDisplay.style.display = 'none';
             this.updateStatus('Processing recording...', 'info');
             
@@ -211,12 +360,31 @@ class AudioRecorder {
         const downloadLink = document.createElement('a');
         downloadLink.href = `/api/download/${sessionId}`;
         downloadLink.download = `recording_${sessionId}.wav`;
-        downloadLink.textContent = 'Download WAV File';
+        downloadLink.textContent = '📥 Download WAV File';
         downloadLink.style.display = 'block';
         downloadLink.style.marginTop = '1rem';
         downloadLink.style.color = '#3b82f6';
         downloadLink.style.textDecoration = 'none';
         downloadLink.style.fontWeight = 'bold';
+        downloadLink.style.padding = '0.5rem 1rem';
+        downloadLink.style.border = '2px solid #3b82f6';
+        downloadLink.style.borderRadius = '8px';
+        downloadLink.style.textAlign = 'center';
+        downloadLink.style.transition = 'all 0.2s';
+        
+        downloadLink.addEventListener('mouseover', () => {
+            downloadLink.style.backgroundColor = '#3b82f6';
+            downloadLink.style.color = 'white';
+        });
+        
+        downloadLink.addEventListener('mouseout', () => {
+            downloadLink.style.backgroundColor = 'transparent';
+            downloadLink.style.color = '#3b82f6';
+        });
+        
+        // Clear any existing download links
+        const existingLinks = this.status.querySelectorAll('a');
+        existingLinks.forEach(link => link.remove());
         
         // Add to status element
         this.status.appendChild(downloadLink);
@@ -245,6 +413,10 @@ class AudioRecorder {
     }
     
     updateStatus(message, type) {
+        // Clear any existing download links when updating status
+        const existingLinks = this.status.querySelectorAll('a');
+        existingLinks.forEach(link => link.remove());
+        
         this.status.textContent = message;
         this.status.className = `status-indicator ${type}`;
         
@@ -252,7 +424,7 @@ class AudioRecorder {
         if (type === 'success' || type === 'error') {
             setTimeout(() => {
                 if (this.status.textContent === message) {
-                    this.status.textContent = 'Click "Start Recording" to begin recording your medical notes';
+                    this.status.textContent = 'Click "Start Recording" to record or "Upload Recording" to upload an audio file';
                     this.status.className = 'status-indicator info';
                 }
             }, 5000);
@@ -261,15 +433,7 @@ class AudioRecorder {
     
     showUploadProgress() {
         this.uploadProgress.style.display = 'block';
-        // Simulate progress (you can make this real with XMLHttpRequest)
-        let progress = 0;
-        const progressInterval = setInterval(() => {
-            progress += 10;
-            this.uploadProgressBar.style.width = `${progress}%`;
-            if (progress >= 100) {
-                clearInterval(progressInterval);
-            }
-        }, 100);
+        this.uploadProgressBar.style.width = '0%';
     }
     
     hideUploadProgress() {
