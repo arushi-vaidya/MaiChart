@@ -3,35 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Audio Recorder</title>
+    <title>MaiChart - Medical Voice Notes</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
+    <!-- Header -->
+    <header class="header">
+        <div class="logo">MaiChart</div>
+        <nav class="nav">
+            <a href="#" class="active">Home</a>
+            <a href="#">Doc Notes</a>
+        </nav>
+    </header>
+
+    <!-- Main Container -->
     <div class="container">
-        <h1>Audio Recorder</h1>
-        
-        <button id="recordButton" class="record-button">
-            <span id="recordText">Record</span>
-        </button>
-        
-        <div id="timer" class="timer">00:00</div>
-        
-        <div id="uploadProgress" class="upload-progress">
-            <div id="uploadProgressBar" class="upload-progress-bar"></div>
-        </div>
-        
-        <div id="status" class="status info">
-            Click the button to start recording
-        </div>
-        
-        <div class="controls">
-            <button id="playButton" class="control-button" style="display: none;">
-                Play Last Recording
-            </button>
-            <button id="downloadButton" class="control-button" style="display: none;">
-                Download WAV
-            </button>
-        </div>
+        <!-- Main Voice Notes Section -->
+        <section class="main-section">
+            <div class="title-section">
+                <h1 class="main-title">Medical Voice Notes</h1>
+                <p class="subtitle">Record medical appointment notes and get AI-powered summaries</p>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <button id="recordButton" class="btn btn-primary">
+                    🎤 Start Recording
+                </button>
+                <button id="stopRecording" class="btn btn-danger" style="display: none;">
+                    ⏹️ Stop Recording
+                </button>
+                <button id="uploadRecording" class="btn btn-outline">
+                    📁 Upload Recording
+                </button>
+                <button id="saveNote" class="btn btn-success">
+                    💾 Save Note
+                </button>
+            </div>
+
+            <!-- Timer -->
+            <div id="timer" class="timer" style="display: none;">00:00</div>
+
+            <!-- Status -->
+            <div id="status" class="status-indicator info">
+                Click "Start Recording" to begin recording your medical notes
+            </div>
+
+            <!-- Upload Progress -->
+            <div id="uploadProgress" class="upload-progress">
+                <div id="uploadProgressBar" class="upload-progress-bar"></div>
+            </div>
+        </section>
     </div>
 
     <script src="{{ url_for('static', filename='js/audio-recorder.js') }}"></script>

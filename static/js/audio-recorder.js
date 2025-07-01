@@ -8,33 +8,38 @@ class AudioRecorder {
         this.timer = null;
         this.lastSessionId = null;
         
-        this.recordButton = document.getElementById('recordButton');
-        this.recordText = document.getElementById('recordText');
+        // UI Elements
+        this.startBtn = document.getElementById('recordButton');
+        this.stopBtn = document.getElementById('stopRecording');
+        this.uploadBtn = document.getElementById('uploadRecording');
+        this.saveBtn = document.getElementById('saveNote');
+        this.timer = document.getElementById('timer');
         this.status = document.getElementById('status');
-        this.timerDisplay = document.getElementById('timer');
         this.uploadProgress = document.getElementById('uploadProgress');
         this.uploadProgressBar = document.getElementById('uploadProgressBar');
-        this.playButton = document.getElementById('playButton');
-        this.downloadButton = document.getElementById('downloadButton');
         
         this.init();
     }
     
     init() {
-        this.recordButton.addEventListener('click', () => {
-            if (this.isRecording) {
-                this.stopRecording();
-            } else {
-                this.startRecording();
-            }
+        // Start Recording Button
+        this.startBtn.addEventListener('click', () => {
+            this.startRecording();
         });
         
-        this.playButton.addEventListener('click', () => {
-            this.playLastRecording();
+        // Stop Recording Button  
+        this.stopBtn.addEventListener('click', () => {
+            this.stopRecording();
         });
         
-        this.downloadButton.addEventListener('click', () => {
-            this.downloadWav();
+        // Upload Button (placeholder for now)
+        this.uploadBtn.addEventListener('click', () => {
+            this.updateStatus('Upload functionality will be added later', 'info');
+        });
+        
+        // Save Button (placeholder for now)
+        this.saveBtn.addEventListener('click', () => {
+            this.updateStatus('Save functionality will be added later', 'info');
         });
     }
     
@@ -76,9 +81,10 @@ class AudioRecorder {
             this.startTime = Date.now();
             
             // Update UI
-            this.recordButton.classList.add('recording');
-            this.recordText.textContent = 'Stop';
-            this.updateStatus('Recording... Click to stop', 'info');
+            this.startBtn.style.display = 'none';
+            this.stopBtn.style.display = 'flex';
+            this.timerDisplay.style.display = 'block';
+            this.updateStatus('Recording... Click "Stop Recording" when finished', 'info');
             
             // Start timer
             this.startTimer();
@@ -100,8 +106,9 @@ class AudioRecorder {
             }
             
             // Update UI
-            this.recordButton.classList.remove('recording');
-            this.recordText.textContent = 'Record';
+            this.startBtn.style.display = 'flex';
+            this.stopBtn.style.display = 'none';
+            this.timerDisplay.style.display = 'none';
             this.updateStatus('Processing recording...', 'info');
             
             // Stop timer
@@ -175,7 +182,7 @@ class AudioRecorder {
                     
                     if (status === 'completed') {
                         this.updateStatus('✅ Processing completed! WAV file ready.', 'success');
-                        this.showDownloadControls();
+                        this.showDownloadOption(sessionId);
                         return;
                     } else if (status === 'error') {
                         this.updateStatus(`❌ Processing failed: ${statusData.error}`, 'error');
@@ -199,50 +206,28 @@ class AudioRecorder {
         checkStatus();
     }
     
-    showDownloadControls() {
-        this.playButton.style.display = 'inline-block';
-        this.downloadButton.style.display = 'inline-block';
+    showDownloadOption(sessionId) {
+        // Add download link to status
+        const downloadLink = document.createElement('a');
+        downloadLink.href = `/api/download/${sessionId}`;
+        downloadLink.download = `recording_${sessionId}.wav`;
+        downloadLink.textContent = 'Download WAV File';
+        downloadLink.style.display = 'block';
+        downloadLink.style.marginTop = '1rem';
+        downloadLink.style.color = '#3b82f6';
+        downloadLink.style.textDecoration = 'none';
+        downloadLink.style.fontWeight = 'bold';
+        
+        // Add to status element
+        this.status.appendChild(downloadLink);
     }
     
-    async playLastRecording() {
-        if (!this.lastSessionId) return;
-        
-        try {
-            const response = await fetch(`/api/download/${this.lastSessionId}`);
-            if (response.ok) {
-                const audioBlob = await response.blob();
-                const audioUrl = URL.createObjectURL(audioBlob);
-                const audio = new Audio(audioUrl);
-                audio.play();
-            }
-        } catch (error) {
-            console.error('Error playing audio:', error);
-        }
-    }
-    
-    async downloadWav() {
-        if (!this.lastSessionId) return;
-        
-        try {
-            const response = await fetch(`/api/download/${this.lastSessionId}`);
-            if (response.ok) {
-                const blob = await response.blob();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `recording_${this.lastSessionId}.wav`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            }
-        } catch (error) {
-            console.error('Error downloading file:', error);
-        }
+    get timerDisplay() {
+        return document.getElementById('timer');
     }
     
     startTimer() {
-        this.timer = setInterval(() => {
+        this.timerInterval = setInterval(() => {
             const elapsed = Date.now() - this.startTime;
             const minutes = Math.floor(elapsed / 60000);
             const seconds = Math.floor((elapsed % 60000) / 1000);
@@ -252,16 +237,26 @@ class AudioRecorder {
     }
     
     stopTimer() {
-        if (this.timer) {
-            clearInterval(this.timer);
-            this.timer = null;
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
         }
         this.timerDisplay.textContent = '00:00';
     }
     
     updateStatus(message, type) {
         this.status.textContent = message;
-        this.status.className = `status ${type}`;
+        this.status.className = `status-indicator ${type}`;
+        
+        // Auto-hide after 5 seconds for success/error messages
+        if (type === 'success' || type === 'error') {
+            setTimeout(() => {
+                if (this.status.textContent === message) {
+                    this.status.textContent = 'Click "Start Recording" to begin recording your medical notes';
+                    this.status.className = 'status-indicator info';
+                }
+            }, 5000);
+        }
     }
     
     showUploadProgress() {

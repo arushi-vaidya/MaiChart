@@ -120,11 +120,3 @@ This will test:
 - ✅ Audio processing pipeline
 - ✅ Status monitoring
 
-
-## License
-
-Apache License 2.0 - see LICENSE file for details
-
----
-
-**Ready to capture and process audio!** 🎵
