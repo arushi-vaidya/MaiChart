@@ -56,10 +56,6 @@ audio-processing-system/
 
 ```bash
 # Clone or create the project directory
-mkdir audio-processing-system && cd audio-processing-system
-
-# Add all the files from the artifacts above
-
 # Start the system
 docker-compose up
 ```
