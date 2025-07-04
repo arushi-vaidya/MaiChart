@@ -4,72 +4,90 @@ from pathlib import Path
 # Base directory
 BASE_DIR = Path(__file__).parent
 
+
 class Config:
     """Base configuration"""
-    
-    # Flask settings
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
-    DEBUG = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
-    HOST = os.environ.get('FLASK_HOST', '0.0.0.0')
-    PORT = int(os.environ.get('FLASK_PORT', 5001))
-    
-    # Redis settings
-    REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
-    REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
-    REDIS_DB = int(os.environ.get('REDIS_DB', 0))
-    
+
+    # Flask settings - Updated with secure secret key
+    SECRET_KEY = os.environ.get(
+        "SECRET_KEY", "maichart-audio-processing-system-secret-key-2025"
+    )
+    DEBUG = os.environ.get("FLASK_DEBUG", "True").lower() == "true"
+    HOST = os.environ.get("FLASK_HOST", "0.0.0.0")
+    PORT = int(os.environ.get("FLASK_PORT", 5001))
+
+    # Redis settings - Updated for Redis Cloud
+    REDIS_HOST = os.environ.get(
+        "REDIS_HOST", "redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com"
+    )
+    REDIS_PORT = int(os.environ.get("REDIS_PORT", 12617))
+    REDIS_PASSWORD = os.environ.get(
+        "REDIS_PASSWORD", "BtUjzw407WUWoZueZH5fEb2mdf51oOSC"
+    )
+    REDIS_DB = int(os.environ.get("REDIS_DB", 0))
+
     # File upload settings
-    UPLOAD_FOLDER = BASE_DIR / 'uploads'
-    PROCESSED_FOLDER = BASE_DIR / 'processed_audio'
-    LOGS_FOLDER = BASE_DIR / 'logs'
-    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
-    ALLOWED_EXTENSIONS = {'webm', 'wav', 'mp3', 'ogg', 'm4a'}
-    
-    # Audio processing settings
-    OUTPUT_SAMPLE_RATE = 44100
-    OUTPUT_CHANNELS = 1  # Mono
-    OUTPUT_FORMAT = 'pcm_s16le'
-    
+    UPLOAD_FOLDER = BASE_DIR / "uploads"
+    TRANSCRIPTS_FOLDER = (
+        BASE_DIR / "transcripts"
+    )  # Changed from processed_audio to transcripts
+    LOGS_FOLDER = BASE_DIR / "logs"
+    MAX_FILE_SIZE = 90 * 1024 * 1024  # 90MB
+    ALLOWED_EXTENSIONS = {"webm", "wav", "mp3", "ogg", "m4a"}
+
+    # Processing settings (removed audio conversion settings)
+    # These are now handled directly by the transcription service
+
     # Redis streams
-    AUDIO_INPUT_STREAM = 'audio_input'
-    CONSUMER_GROUP = 'audio_processors'
-    
+    AUDIO_INPUT_STREAM = "audio_input"
+    CONSUMER_GROUP = "audio_processors"
+
     # Worker settings
-    WORKER_TIMEOUT = 60  # seconds
+    WORKER_TIMEOUT = 300  # 5 minutes for transcription
     WORKER_BLOCK_TIME = 1000  # milliseconds
-    SESSION_EXPIRE_TIME = 3600  # 1 hour
-    
+    SESSION_EXPIRE_TIME = 7200  # 2 hours (longer for transcription results)
+
     @classmethod
     def create_directories(cls):
         """Create necessary directories"""
-        directories = [cls.UPLOAD_FOLDER, cls.PROCESSED_FOLDER, cls.LOGS_FOLDER]
+        directories = [cls.UPLOAD_FOLDER, cls.TRANSCRIPTS_FOLDER, cls.LOGS_FOLDER]
         for directory in directories:
             directory.mkdir(exist_ok=True)
 
+
 class DevelopmentConfig(Config):
     """Development configuration"""
+
     DEBUG = True
+    # Override for development
+    SECRET_KEY = os.environ.get(
+        "SECRET_KEY",
+        "MaiChart2025SecureDevelopmentKey!@#$%^&*ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefg",
+    )
+
 
 class ProductionConfig(Config):
     """Production configuration"""
+
     DEBUG = False
-    
-    @property
-    def SECRET_KEY(self):
-        secret_key = os.environ.get('SECRET_KEY')
-        if not secret_key:
-            raise ValueError("SECRET_KEY environment variable must be set in production")
-        return secret_key
+
+    # Use environment variable for production secret key
+    SECRET_KEY = os.environ.get(
+        "SECRET_KEY", "MaiChart2025AudioProcessingSystem!SecureKey#123$XyZ&*ABCDEFghijk"
+    )
+
 
 class TestingConfig(Config):
     """Testing configuration"""
+
     TESTING = True
     REDIS_DB = 1  # Use different Redis DB for testing
 
+
 # Configuration mapping
 config = {
-    'development': DevelopmentConfig,
-    'production': ProductionConfig,
-    'testing': TestingConfig,
-    'default': DevelopmentConfig
+    "development": DevelopmentConfig,
+    "production": ProductionConfig,
+    "testing": TestingConfig,
+    "default": DevelopmentConfig,
 }

@@ -2,3 +2,7 @@ Flask==2.3.3
 Flask-CORS==4.0.0
 redis==5.0.1
 python-dotenv==1.0.0
+# Add requests for HTTP API calls (if using external transcription services)
+requests==2.31.0
+# Add cryptography for SSL certificate generation
+cryptography==41.0.7

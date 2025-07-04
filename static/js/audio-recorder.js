@@ -44,7 +44,7 @@ class AudioRecorder {
             this.stopRecording();
         });
         
-        // Upload Button - now functional
+        // Upload Button
         this.uploadBtn.addEventListener('click', () => {
             this.selectFileForUpload();
         });
@@ -63,7 +63,6 @@ class AudioRecorder {
     }
     
     selectFileForUpload() {
-        // Trigger file selection dialog
         this.fileInput.click();
     }
     
@@ -86,13 +85,13 @@ class AudioRecorder {
     }
     
     validateFile(file) {
-        const maxSize = 50 * 1024 * 1024; // 50MB
+        const maxSize = 90 * 1024 * 1024; // 90MB
         const allowedTypes = ['audio/webm', 'audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/m4a'];
         const allowedExtensions = ['.webm', '.wav', '.mp3', '.ogg', '.m4a'];
         
         // Check file size
         if (file.size > maxSize) {
-            this.updateStatus('File too large. Maximum size is 50MB.', 'error');
+            this.updateStatus('File too large. Maximum size is 90MB.', 'error');
             return false;
         }
         
@@ -319,7 +318,7 @@ class AudioRecorder {
     }
     
     async monitorProcessing(sessionId) {
-        const maxAttempts = 30; // 30 seconds max
+        const maxAttempts = 60; // 60 seconds max for transcription
         let attempts = 0;
         
         const checkStatus = async () => {
@@ -328,16 +327,25 @@ class AudioRecorder {
                 if (response.ok) {
                     const statusData = await response.json();
                     const status = statusData.status;
+                    const step = statusData.step || '';
                     
                     if (status === 'completed') {
-                        this.updateStatus('✅ Processing completed! WAV file ready.', 'success');
-                        this.showDownloadOption(sessionId);
+                        this.updateStatus('✅ Transcription completed! Text ready.', 'success');
+                        this.showTranscriptOption(sessionId);
                         return;
                     } else if (status === 'error') {
                         this.updateStatus(`❌ Processing failed: ${statusData.error}`, 'error');
                         return;
                     } else if (status === 'processing') {
-                        this.updateStatus('🔄 Converting to WAV format...', 'info');
+                        let stepMessage = '🔄 Processing audio...';
+                        if (step === 'analyzing_audio') {
+                            stepMessage = '🔍 Analyzing audio file...';
+                        } else if (step === 'processing_audio') {
+                            stepMessage = '🎵 Transcribing audio...';
+                        } else if (step === 'saving_transcript') {
+                            stepMessage = '💾 Saving transcript...';
+                        }
+                        this.updateStatus(stepMessage, 'info');
                     }
                 }
                 
@@ -355,39 +363,66 @@ class AudioRecorder {
         checkStatus();
     }
     
-    showDownloadOption(sessionId) {
-        // Add download link to status
-        const downloadLink = document.createElement('a');
-        downloadLink.href = `/api/download/${sessionId}`;
-        downloadLink.download = `recording_${sessionId}.wav`;
-        downloadLink.textContent = '📥 Download WAV File';
-        downloadLink.style.display = 'block';
-        downloadLink.style.marginTop = '1rem';
-        downloadLink.style.color = '#3b82f6';
-        downloadLink.style.textDecoration = 'none';
-        downloadLink.style.fontWeight = 'bold';
-        downloadLink.style.padding = '0.5rem 1rem';
-        downloadLink.style.border = '2px solid #3b82f6';
-        downloadLink.style.borderRadius = '8px';
-        downloadLink.style.textAlign = 'center';
-        downloadLink.style.transition = 'all 0.2s';
+    showTranscriptOption(sessionId) {
+        // Add view transcript button to status
+        const transcriptBtn = document.createElement('button');
+        transcriptBtn.textContent = '📄 View Transcript';
+        transcriptBtn.style.display = 'block';
+        transcriptBtn.style.marginTop = '1rem';
+        transcriptBtn.style.color = '#3b82f6';
+        transcriptBtn.style.backgroundColor = 'transparent';
+        transcriptBtn.style.border = '2px solid #3b82f6';
+        transcriptBtn.style.borderRadius = '8px';
+        transcriptBtn.style.padding = '0.5rem 1rem';
+        transcriptBtn.style.fontWeight = 'bold';
+        transcriptBtn.style.cursor = 'pointer';
+        transcriptBtn.style.transition = 'all 0.2s';
         
-        downloadLink.addEventListener('mouseover', () => {
-            downloadLink.style.backgroundColor = '#3b82f6';
-            downloadLink.style.color = 'white';
+        transcriptBtn.addEventListener('mouseover', () => {
+            transcriptBtn.style.backgroundColor = '#3b82f6';
+            transcriptBtn.style.color = 'white';
         });
         
-        downloadLink.addEventListener('mouseout', () => {
-            downloadLink.style.backgroundColor = 'transparent';
-            downloadLink.style.color = '#3b82f6';
+        transcriptBtn.addEventListener('mouseout', () => {
+            transcriptBtn.style.backgroundColor = 'transparent';
+            transcriptBtn.style.color = '#3b82f6';
         });
         
-        // Clear any existing download links
-        const existingLinks = this.status.querySelectorAll('a');
-        existingLinks.forEach(link => link.remove());
+        transcriptBtn.addEventListener('click', () => {
+            this.showTranscript(sessionId);
+        });
+        
+        // Clear any existing buttons
+        const existingBtns = this.status.querySelectorAll('button');
+        existingBtns.forEach(btn => btn.remove());
         
         // Add to status element
-        this.status.appendChild(downloadLink);
+        this.status.appendChild(transcriptBtn);
+    }
+    
+    async showTranscript(sessionId) {
+        try {
+            const response = await fetch(`/api/transcript/${sessionId}`);
+            if (response.ok) {
+                const data = await response.json();
+                const transcript = data.transcript;
+                
+                // Create modal or update status with transcript
+                const transcriptText = transcript.text || 'No transcript available';
+                const confidence = transcript.confidence || 0;
+                const wordCount = transcript.word_count || 0;
+                
+                this.updateStatus(
+                    `📄 Transcript (${Math.round(confidence * 100)}% confidence, ${wordCount} words):\n\n"${transcriptText}"`,
+                    'success'
+                );
+            } else {
+                this.updateStatus('Error loading transcript', 'error');
+            }
+        } catch (error) {
+            console.error('Error loading transcript:', error);
+            this.updateStatus('Error loading transcript', 'error');
+        }
     }
     
     get timerDisplay() {
@@ -413,21 +448,21 @@ class AudioRecorder {
     }
     
     updateStatus(message, type) {
-        // Clear any existing download links when updating status
-        const existingLinks = this.status.querySelectorAll('a');
-        existingLinks.forEach(link => link.remove());
+        // Clear any existing buttons when updating status
+        const existingBtns = this.status.querySelectorAll('button');
+        existingBtns.forEach(btn => btn.remove());
         
         this.status.textContent = message;
         this.status.className = `status-indicator ${type}`;
         
-        // Auto-hide after 5 seconds for success/error messages
+        // Auto-hide after 10 seconds for success/error messages (longer for transcript)
         if (type === 'success' || type === 'error') {
             setTimeout(() => {
                 if (this.status.textContent === message) {
-                    this.status.textContent = 'Click "Start Recording" to record or "Upload Recording" to upload an audio file';
+                    this.status.textContent = 'Click "Start Recording" to record or "Upload Audio File" to upload an existing audio file';
                     this.status.className = 'status-indicator info';
                 }
-            }, 5000);
+            }, 10000);
         }
     }
     

@@ -1,20 +1,6 @@
 version: '3.8'
 
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: audio_redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
   web:
     build: .
     container_name: audio_web
@@ -22,32 +8,27 @@ services:
       - "5001:5001"
     volumes:
       - "./uploads:/app/uploads"
-      - "./processed_audio:/app/processed_audio"
+      - "./transcripts:/app/transcripts"  # Changed from processed_audio to transcripts
       - "./logs:/app/logs"
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      # Redis Cloud configuration
+      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
+      - REDIS_PORT=12617
+      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
       - FLASK_PORT=5001
-    depends_on:
-      redis:
-        condition: service_healthy
     command: python app.py
 
-  ffmpeg_worker:
+  transcription_worker:
     build: .
-    container_name: audio_ffmpeg_worker
+    container_name: audio_transcription_worker
     volumes:
       - "./uploads:/app/uploads"
-      - "./processed_audio:/app/processed_audio"
+      - "./transcripts:/app/transcripts"  # Changed from processed_audio to transcripts
       - "./logs:/app/logs"
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-    depends_on:
-      redis:
-        condition: service_healthy
-    command: python workers/ffmpeg_worker.py
+      # Redis Cloud configuration
+      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
+      - REDIS_PORT=12617
+      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
+    command: python workers/transcription_worker.py  # Changed from ffmpeg_worker
     restart: unless-stopped
-
-volumes:
-  redis_data:
