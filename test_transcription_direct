@@ -1,0 +1,261 @@
+#!/usr/bin/env python3
+"""
+Direct test of transcription worker functionality
+"""
+
+import os
+import sys
+import logging
+from pathlib import Path
+
+# Add project root to path
+sys.path.append('/app' if os.path.exists('/app') else str(Path(__file__).parent))
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+def test_assemblyai_direct():
+    """Test AssemblyAI directly without worker framework"""
+    print("🤖 Testing AssemblyAI Direct Connection")
+    print("=" * 45)
+    
+    try:
+        import assemblyai as aai
+        
+        # Set API key
+        api_key = "d8a38013ebce49d88d0579ce2d28d0d2"
+        aai.settings.api_key = api_key
+        print(f"✅ API key set: {api_key[:8]}...{api_key[-8:]}")
+        
+        # Configure transcription
+        config = aai.TranscriptionConfig(
+            speech_model=aai.SpeechModel.best,
+            punctuate=True,
+            format_text=True
+        )
+        
+        transcriber = aai.Transcriber(config=config)
+        print("✅ Transcriber configured")
+        
+        # Test with a known working audio file
+        test_url = "https://assembly.ai/wildfires.mp3"
+        print(f"🎵 Testing with: {test_url}")
+        
+        transcript = transcriber.transcribe(test_url)
+        print(f"📡 Status: {transcript.status}")
+        
+        if transcript.status == "error":
+            print(f"❌ Error: {transcript.error}")
+            return False
+        
+        print(f"✅ Success!")
+        print(f"📝 Text length: {len(transcript.text)} chars")
+        print(f"🎯 Confidence: {getattr(transcript, 'confidence', 'N/A')}")
+        print(f"⏱️ Duration: {getattr(transcript, 'audio_duration', 'N/A')}s")
+        print(f"📄 Preview: {transcript.text[:200]}...")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def test_local_file_transcription():
+    """Test transcription with a local file if available"""
+    print("\n📁 Testing Local File Transcription")
+    print("=" * 38)
+    
+    # Look for audio files in uploads directory
+    uploads_dir = Path('/app/uploads' if os.path.exists('/app/uploads') else './uploads')
+    
+    if not uploads_dir.exists():
+        print("⚠️ No uploads directory found")
+        return True
+    
+    # Find audio files
+    audio_extensions = ['.webm', '.wav', '.mp3', '.m4a', '.ogg']
+    audio_files = []
+    
+    for ext in audio_extensions:
+        audio_files.extend(uploads_dir.glob(f'*{ext}'))
+    
+    if not audio_files:
+        print("ℹ️ No audio files found in uploads directory")
+        return True
+    
+    # Use the most recent file
+    test_file = sorted(audio_files, key=lambda x: x.stat().st_mtime)[-1]
+    print(f"🎵 Found test file: {test_file.name}")
+    print(f"📊 File size: {test_file.stat().st_size} bytes")
+    
+    try:
+        import assemblyai as aai
+        
+        # Set API key
+        aai.settings.api_key = "d8a38013ebce49d88d0579ce2d28d0d2"
+        
+        # Configure transcription
+        config = aai.TranscriptionConfig(
+            speech_model=aai.SpeechModel.best,
+            punctuate=True,
+            format_text=True
+        )
+        
+        transcriber = aai.Transcriber(config=config)
+        
+        print(f"🔄 Transcribing {test_file.name}...")
+        transcript = transcriber.transcribe(str(test_file))
+        
+        print(f"📡 Status: {transcript.status}")
+        
+        if transcript.status == "error":
+            print(f"❌ Error: {transcript.error}")
+            return False
+        
+        print(f"✅ Local transcription successful!")
+        print(f"📝 Text: {transcript.text[:200] if transcript.text else 'No text'}...")
+        print(f"🎯 Confidence: {getattr(transcript, 'confidence', 'N/A')}")
+        print(f"📊 Words: {len(transcript.text.split()) if transcript.text else 0}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Local file test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def test_worker_import():
+    """Test importing the transcription worker"""
+    print("\n🔧 Testing Worker Import")
+    print("=" * 25)
+    
+    try:
+        # Import worker
+        from workers.transcription_worker import TranscriptionWorker
+        print("✅ TranscriptionWorker imported successfully")
+        
+        # Try to create worker instance
+        worker = TranscriptionWorker()
+        print("✅ Worker instance created")
+        
+        # Test dependency check
+        deps_ok = worker.check_dependencies()
+        print(f"🔍 Dependencies check: {'✅ PASS' if deps_ok else '❌ FAIL'}")
+        
+        return deps_ok
+        
+    except Exception as e:
+        print(f"❌ Worker import/creation failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def test_redis_session():
+    """Test Redis session operations"""
+    print("\n🔴 Testing Redis Session Operations")
+    print("=" * 36)
+    
+    try:
+        from core.redis_client import RedisClient
+        
+        # Create Redis client
+        redis_client = RedisClient(
+            host=os.getenv('REDIS_HOST', 'localhost'),
+            port=int(os.getenv('REDIS_PORT', '6379')),
+            password=os.getenv('REDIS_PASSWORD'),
+            db=0
+        )
+        
+        # Test ping
+        if not redis_client.ping():
+            print("❌ Redis ping failed")
+            return False
+        
+        print("✅ Redis connection OK")
+        
+        # Test session operations
+        test_session_id = "direct-test-session"
+        
+        # Set test data
+        test_data = {
+            'status': 'completed',
+            'transcript_text': 'This is a test transcript',
+            'transcript_confidence': 0.95,
+            'transcript_words': 5
+        }
+        
+        redis_client.set_session_status(test_session_id, test_data)
+        print("✅ Session status set")
+        
+        # Retrieve data
+        retrieved = redis_client.get_session_status(test_session_id)
+        if retrieved:
+            print("✅ Session status retrieved")
+            print(f"📊 Status: {retrieved.get('status')}")
+            print(f"📝 Text: {retrieved.get('transcript_text')}")
+            return True
+        else:
+            print("❌ Session status retrieval failed")
+            return False
+        
+    except Exception as e:
+        print(f"❌ Redis test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def main():
+    """Run all direct tests"""
+    print("🧪 Direct Transcription Test Suite")
+    print("=" * 50)
+    
+    tests = [
+        ("AssemblyAI Direct", test_assemblyai_direct),
+        ("Worker Import", test_worker_import),
+        ("Redis Session", test_redis_session),
+        ("Local File Transcription", test_local_file_transcription),
+    ]
+    
+    passed = 0
+    for test_name, test_func in tests:
+        print(f"\n{'='*50}")
+        print(f"🧪 Running: {test_name}")
+        print('='*50)
+        
+        try:
+            if test_func():
+                passed += 1
+                print(f"✅ {test_name} PASSED")
+            else:
+                print(f"❌ {test_name} FAILED")
+        except Exception as e:
+            print(f"💥 {test_name} CRASHED: {e}")
+    
+    print(f"\n{'='*50}")
+    print(f"📊 Results: {passed}/{len(tests)} tests passed")
+    print('='*50)
+    
+    if passed >= 3:
+        print("🎉 Transcription system is working!")
+        
+        # Show next steps
+        print("\n📋 Troubleshooting Steps:")
+        print("1. Check worker logs: docker logs audio_transcription_worker")
+        print("2. Check if worker is processing: docker exec audio_transcription_worker ps aux")
+        print("3. Test with fresh recording in the web interface")
+        print("4. Check Redis data: docker exec audio_transcription_worker python -c \"from core.redis_client import RedisClient; import os; r=RedisClient(host=os.getenv('REDIS_HOST'), port=int(os.getenv('REDIS_PORT')), password=os.getenv('REDIS_PASSWORD')); print('Redis keys:', r.client.keys('*'))\"")
+        
+    else:
+        print("⚠️ Issues detected. Fix the failing tests above.")
+    
+    return 0 if passed >= 3 else 1
+
+if __name__ == "__main__":
+    sys.exit(main())

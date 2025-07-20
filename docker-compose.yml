@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   web:
     build: .
@@ -28,7 +30,5 @@ services:
       - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
       - REDIS_PORT=12617
       - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
-      # Add the missing PROCESSED_FOLDER configuration
-      - PROCESSED_FOLDER=/app/transcripts
     command: python workers/transcription_worker.py
     restart: unless-stopped

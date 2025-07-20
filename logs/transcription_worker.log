@@ -14,3 +14,66 @@
 2025-07-19 17:06:46,534 - transcription_worker - INFO - Starting transcription_worker...
 2025-07-19 17:07:43,235 - transcription_worker - INFO - Received signal 15, shutting down gracefully...
 2025-07-19 17:07:44,411 - transcription_worker - INFO - transcription_worker stopped
+2025-07-20 06:55:52,273 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 06:55:52,274 - transcription_worker - INFO - Starting transcription_worker...
+2025-07-20 06:56:10,843 - transcription_worker - INFO - Processing message 1752994570840-0
+2025-07-20 06:56:11,191 - transcription_worker - INFO - Message 1752994570840-0 processed and acknowledged
+2025-07-20 06:56:45,118 - transcription_worker - INFO - Received signal 15, shutting down gracefully...
+2025-07-20 06:56:46,799 - transcription_worker - INFO - transcription_worker stopped
+2025-07-20 06:58:31,963 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 06:58:31,965 - transcription_worker - INFO - Starting transcription_worker...
+2025-07-20 06:58:42,841 - transcription_worker - INFO - Processing message 1752994722839-0
+2025-07-20 06:58:43,120 - transcription_worker - INFO - Message 1752994722839-0 processed and acknowledged
+2025-07-20 06:58:51,429 - transcription_worker - INFO - Received signal 15, shutting down gracefully...
+2025-07-20 06:58:52,988 - transcription_worker - INFO - transcription_worker stopped
+2025-07-20 07:02:40,066 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:02:40,068 - transcription_worker - INFO - Starting transcription_worker...
+2025-07-20 07:02:51,965 - transcription_worker - INFO - Processing message 1752994971931-0
+2025-07-20 07:02:52,163 - transcription_worker - INFO - Message 1752994971931-0 processed and acknowledged
+2025-07-20 07:03:39,417 - transcription_worker - INFO - Received signal 15, shutting down gracefully...
+2025-07-20 07:03:40,018 - transcription_worker - INFO - transcription_worker stopped
+2025-07-20 07:21:32,368 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:21:33,367 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:21:34,173 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:21:35,099 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:21:36,423 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:21:38,579 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:21:53,623 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:21:54,373 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:21:55,194 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:21:56,156 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:21:57,496 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:21:59,644 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:22:03,383 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:22:10,688 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:22:11,344 - transcription_worker - INFO - Worker initialized: transcription_worker_15
+2025-07-20 07:22:24,324 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:22:54,220 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:23:46,276 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:24:20,224 - transcription_worker - INFO - Worker initialized: transcription_worker_21
+2025-07-20 07:24:47,257 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:25:05,500 - transcription_worker - INFO - Worker initialized: transcription_worker_35
+2025-07-20 07:28:46,916 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:28:46,996 - transcription_worker - INFO - Starting transcription_worker...
+2025-07-20 07:28:48,903 - transcription_worker - INFO - Received signal 15, shutting down gracefully...
+2025-07-20 07:28:49,624 - transcription_worker - INFO - transcription_worker stopped
+2025-07-20 07:28:50,253 - transcription_worker - INFO - Worker initialized: transcription_worker_7
+2025-07-20 07:28:50,316 - transcription_worker - INFO - Starting transcription_worker...
+2025-07-20 07:31:03,347 - transcription_worker - INFO - Worker initialized: transcription_worker_13
+2025-07-20 07:31:03,419 - transcription_worker - INFO - Starting transcription_worker...
+2025-07-20 07:31:54,648 - transcription_worker - INFO - Worker initialized: transcription_worker_19
+2025-07-20 07:31:54,716 - transcription_worker - INFO - Starting transcription_worker...
+2025-07-20 07:32:13,244 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:32:13,319 - transcription_worker - INFO - Starting transcription_worker...
+2025-07-20 07:32:40,468 - transcription_worker - INFO - Processing message 1752996760455-0
+2025-07-20 07:32:46,304 - transcription_worker - INFO - Message 1752996760455-0 processed and acknowledged
+2025-07-20 07:33:29,992 - transcription_worker - INFO - Received signal 15, shutting down gracefully...
+2025-07-20 07:33:31,286 - transcription_worker - INFO - transcription_worker stopped
+2025-07-20 07:34:41,071 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 07:34:41,135 - transcription_worker - INFO - Starting transcription_worker...
+2025-07-20 07:34:47,606 - transcription_worker - INFO - Worker initialized: transcription_worker_13
+2025-07-20 07:34:47,670 - transcription_worker - INFO - Starting transcription_worker...
+2025-07-20 07:36:13,697 - transcription_worker - INFO - Processing message 1752996973690-0
+2025-07-20 07:36:19,835 - transcription_worker - INFO - Message 1752996973690-0 processed and acknowledged
+2025-07-20 07:38:35,310 - transcription_worker - INFO - Processing message 1752997115298-0
+2025-07-20 07:38:41,210 - transcription_worker - INFO - Message 1752997115298-0 processed and acknowledged
