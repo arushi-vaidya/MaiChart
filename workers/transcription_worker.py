@@ -45,8 +45,6 @@ class TranscriptionWorker(BaseWorker):
         aai.settings.api_key = self.api_key
         logger.info(f"✅ AssemblyAI API key configured: {self.api_key[:8]}...{self.api_key[-8:]}")
         
-        # Create transcription configuration optimized for medical use
-        # Note: Using default model since 'best' doesn't exist
         self.transcription_config = aai.TranscriptionConfig(
             punctuate=True,
             format_text=True,

@@ -18,8 +18,7 @@ def create_app(config_name=None):
     app = Flask(__name__)
     app.config.from_object(config[config_name])
 
-    # Additional security configurations
-    app.config["SESSION_COOKIE_SECURE"] = False  # Set to True in production with HTTPS
+    app.config["SESSION_COOKIE_SECURE"] = False  
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
@@ -40,7 +39,7 @@ def create_app(config_name=None):
         redis_client = RedisClient(
             host=app.config["REDIS_HOST"],
             port=app.config["REDIS_PORT"],
-            password=app.config["REDIS_PASSWORD"],  # Make sure password is passed
+            password=app.config["REDIS_PASSWORD"],  
             db=app.config["REDIS_DB"],
         )
         app.logger.info("Redis connection established")

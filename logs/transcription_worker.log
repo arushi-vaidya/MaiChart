@@ -35,3 +35,11 @@
 2025-07-20 08:13:02,112 - transcription_worker - INFO - Message 1752999177404-0 processed and acknowledged
 2025-07-20 08:13:19,844 - transcription_worker - INFO - Received signal 15, shutting down gracefully...
 2025-07-20 08:13:20,417 - transcription_worker - INFO - transcription_worker stopped
+2025-07-20 08:24:41,444 - transcription_worker - INFO - Worker initialized: transcription_worker_1
+2025-07-20 08:24:41,544 - transcription_worker - INFO - Starting transcription_worker...
+2025-07-20 08:26:03,437 - transcription_worker - INFO - Processing message 1752999963435-0
+2025-07-20 08:26:19,592 - transcription_worker - ERROR - Failed to process message 1752999963435-0
+2025-07-20 08:26:37,003 - transcription_worker - INFO - Processing message 1752999996940-0
+2025-07-20 08:26:42,815 - transcription_worker - INFO - Message 1752999996940-0 processed and acknowledged
+2025-07-20 08:26:54,313 - transcription_worker - INFO - Received signal 15, shutting down gracefully...
+2025-07-20 08:26:54,836 - transcription_worker - INFO - transcription_worker stopped

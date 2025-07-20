@@ -11,9 +11,8 @@ services:
       - "./transcripts:/app/transcripts"
       - "./logs:/app/logs"
     env_file:
-      - .env  # Load environment variables from .env file
+      - .env  
     environment:
-      # Override specific environment variables if needed
       - FLASK_PORT=5001
     command: python app.py
     restart: unless-stopped
@@ -26,7 +25,7 @@ services:
       - "./transcripts:/app/transcripts"
       - "./logs:/app/logs"
     env_file:
-      - .env  # Load environment variables from .env file
+      - .env  
     command: python workers/transcription_worker.py
     restart: unless-stopped
     depends_on:

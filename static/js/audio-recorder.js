@@ -483,3 +483,273 @@ class AudioRecorder {
 document.addEventListener('DOMContentLoaded', () => {
     new AudioRecorder();
 });
+
+let currentNotes = [];
+let currentFilter = 'all';
+
+// Navigation between sections
+function showNotesSection() {
+    document.getElementById('recording-section').style.display = 'none';
+    document.getElementById('notes-section').style.display = 'block';
+
+    // Update nav links
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('active');
+    });
+    document.querySelector('a[href="#notes"]').classList.add('active');
+
+    loadNotes();
+}
+
+function showRecordingSection() {
+    document.getElementById('notes-section').style.display = 'none';
+    document.getElementById('recording-section').style.display = 'block';
+
+    // Update nav links
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('active');
+    });
+    document.querySelector('a[href="#recording"]').classList.add('active');
+}
+
+// Load notes from backend
+async function loadNotes() {
+    try {
+        const response = await fetch('/api/notes');
+        if (response.ok) {
+            const data = await response.json();
+            currentNotes = data.notes || [];
+            displayNotes(currentNotes);
+        } else {
+            console.error('Failed to load notes');
+            showEmptyState();
+        }
+    } catch (error) {
+        console.error('Error loading notes:', error);
+        showEmptyState();
+    }
+}
+
+// Display notes in the grid
+function displayNotes(notes) {
+    const notesGrid = document.getElementById('notesGrid');
+    const emptyState = document.getElementById('emptyState');
+
+    if (!notes || notes.length === 0) {
+        showEmptyState();
+        return;
+    }
+
+    emptyState.style.display = 'none';
+    notesGrid.style.display = 'grid';
+
+    notesGrid.innerHTML = notes.map(note => createNoteCard(note)).join('');
+}
+
+// Create a note card HTML
+function createNoteCard(note) {
+    const date = new Date(note.created_at || note.timestamp);
+    const confidence = note.confidence || 0;
+    const confidenceClass = confidence >= 0.8 ? 'confidence-high' :
+        confidence >= 0.6 ? 'confidence-medium' : 'confidence-low';
+
+    const preview = note.text ? note.text.substring(0, 200) : 'No transcript available';
+    const wordCount = note.text ? note.text.split(' ').length : 0;
+
+    return `
+        <div class="note-card" onclick="openNoteModal('${note.session_id}')">
+            <div class="note-header">
+                <div class="note-metadata">
+                    <div class="note-date">${formatDate(date)}</div>
+                    <div class="note-session">ID: ${note.session_id.substring(0, 8)}...</div>
+                </div>
+                <div class="note-actions">
+                    <button class="action-btn" onclick="event.stopPropagation(); downloadNote('${note.session_id}')" title="Download">💾</button>
+                    <button class="action-btn delete" onclick="event.stopPropagation(); deleteNote('${note.session_id}')" title="Delete">🗑️</button>
+                </div>
+            </div>
+            
+            <div class="note-stats">
+                <div class="stat-item">
+                    <span>🎯</span>
+                    <span class="${confidenceClass}">${Math.round(confidence * 100)}%</span>
+                </div>
+                <div class="stat-item">
+                    <span>📝</span>
+                    <span>${wordCount} words</span>
+                </div>
+                ${note.duration ? `
+                <div class="stat-item">
+                    <span>⏱️</span>
+                    <span>${Math.round(note.duration)}s</span>
+                </div>
+                ` : ''}
+            </div>
+            
+            <div class="note-text" id="text-${note.session_id}">
+                ${preview}${note.text && note.text.length > 200 ? '...' : ''}
+            </div>
+            
+            ${note.text && note.text.length > 200 ? `
+            <div class="expand-btn" onclick="event.stopPropagation(); toggleExpand('${note.session_id}')">
+                Click to read full transcript
+            </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+// Open note in modal
+function openNoteModal(sessionId) {
+    const note = currentNotes.find(n => n.session_id === sessionId);
+    if (!note) return;
+
+    document.getElementById('modalTitle').textContent = `Medical Note - ${formatDate(new Date(note.created_at || note.timestamp))}`;
+    document.getElementById('modalTranscript').textContent = note.text || 'No transcript available';
+    document.getElementById('transcriptModal').style.display = 'block';
+}
+
+// Close modal
+function closeModal() {
+    document.getElementById('transcriptModal').style.display = 'none';
+}
+
+// Format date for display
+function formatDate(date) {
+    return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+// Search functionality
+document.getElementById('searchBox').addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase();
+    const filteredNotes = currentNotes.filter(note =>
+        (note.text && note.text.toLowerCase().includes(searchTerm)) ||
+        note.session_id.toLowerCase().includes(searchTerm)
+    );
+    displayNotes(filteredNotes);
+});
+
+// Filter functionality
+document.querySelectorAll('.filter-chip').forEach(chip => {
+    chip.addEventListener('click', function() {
+        document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+        this.classList.add('active');
+
+        const filter = this.dataset.filter;
+        currentFilter = filter;
+
+        let filteredNotes = [...currentNotes];
+        const now = new Date();
+
+        switch (filter) {
+            case 'today':
+                filteredNotes = filteredNotes.filter(note => {
+                    const noteDate = new Date(note.created_at || note.timestamp);
+                    return noteDate.toDateString() === now.toDateString();
+                });
+                break;
+            case 'week':
+                const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                filteredNotes = filteredNotes.filter(note => {
+                    const noteDate = new Date(note.created_at || note.timestamp);
+                    return noteDate >= weekAgo;
+                });
+                break;
+            case 'high-confidence':
+                filteredNotes = filteredNotes.filter(note =>
+                    (note.confidence || 0) >= 0.8
+                );
+                break;
+        }
+
+        displayNotes(filteredNotes);
+    });
+});
+
+// Refresh notes
+function refreshNotes() {
+    loadNotes();
+}
+
+// Download note
+async function downloadNote(sessionId) {
+    try {
+        const response = await fetch(`/api/transcript/${sessionId}/download`);
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `medical_note_${sessionId.substring(0, 8)}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+    } catch (error) {
+        console.error('Error downloading note:', error);
+    }
+}
+
+// Delete note
+async function deleteNote(sessionId) {
+    if (!confirm('Are you sure you want to delete this medical note?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/cleanup/${sessionId}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            // Remove from current notes array
+            currentNotes = currentNotes.filter(note => note.session_id !== sessionId);
+            displayNotes(currentNotes);
+        } else {
+            alert('Failed to delete note');
+        }
+    } catch (error) {
+        console.error('Error deleting note:', error);
+        alert('Error deleting note');
+    }
+}
+
+// Show empty state
+function showEmptyState() {
+    document.getElementById('notesGrid').style.display = 'none';
+    document.getElementById('emptyState').style.display = 'block';
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.getElementById('transcriptModal');
+    if (event.target === modal) {
+        closeModal();
+    }
+}
+
+// Navigation link handlers
+document.querySelectorAll('.nav-link').forEach(link => {
+    link.addEventListener('click', function(e) {
+        e.preventDefault();
+        const href = this.getAttribute('href');
+        if (href === '#recording') {
+            showRecordingSection();
+        } else if (href === '#notes') {
+            showNotesSection();
+        }
+    });
+});
+
+// Initialize the interface
+document.addEventListener('DOMContentLoaded', function() {
+    // Start with recording section
+    showRecordingSection();
+});
