@@ -27,8 +27,6 @@ audio-processing-system/
 ├── requirements.txt            # Python dependencies (includes assemblyai)
 ├── docker-compose.yml          # Docker deployment
 ├── Dockerfile                  # Container configuration
-├── setup.py                   # Setup script
-├── test_system.py             # End-to-end testing
 ├── README.md                  # Documentation
 │
 ├── templates/                  # Flask templates

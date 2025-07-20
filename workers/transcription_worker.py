@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fixed Transcription Worker using AssemblyAI
+Transcription Worker using AssemblyAI with environment variables
 """
 
 import os
@@ -9,6 +9,10 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
@@ -31,14 +35,28 @@ class TranscriptionWorker(BaseWorker):
     def __init__(self, config_name='default'):
         super().__init__('transcription_worker', config_name)
         
-        # AssemblyAI configuration
-        self.api_key = "d8a38013ebce49d88d0579ce2d28d0d2"
-        aai.settings.api_key = self.api_key
+        # Get AssemblyAI API key from environment
+        self.api_key = os.getenv('ASSEMBLYAI_API_KEY')
         
-        # Create transcription configuration
+        if not self.api_key:
+            raise ValueError("ASSEMBLYAI_API_KEY environment variable must be set")
+        
+        # Configure AssemblyAI
+        aai.settings.api_key = self.api_key
+        logger.info(f"✅ AssemblyAI API key configured: {self.api_key[:8]}...{self.api_key[-8:]}")
+        
+        # Create transcription configuration optimized for medical use
+        # Note: Using default model since 'best' doesn't exist
         self.transcription_config = aai.TranscriptionConfig(
             punctuate=True,
             format_text=True,
+            # Add medical term boosting for better accuracy
+            word_boost=[
+                "medical", "patient", "diagnosis", "treatment", "medication",
+                "symptoms", "examination", "prescription", "therapy", "clinical",
+                "doctor", "physician", "nurse", "hospital", "clinic", "surgery",
+                "procedure", "vital", "signs", "blood", "pressure", "heart", "rate"
+            ]
         )
         
         # Initialize transcriber
@@ -48,20 +66,25 @@ class TranscriptionWorker(BaseWorker):
         self.transcripts_dir = self.config.TRANSCRIPTS_FOLDER
         self.transcripts_dir.mkdir(exist_ok=True)
         
-        logger.info("Transcription Worker initialized successfully")
+        logger.info("✅ Transcription Worker initialized successfully with medical optimization")
     
     def check_dependencies(self) -> bool:
-        """Check if AssemblyAI is available"""
+        """Check if AssemblyAI is available and configured"""
         try:
-            logger.info("Checking AssemblyAI dependencies...")
+            logger.info("🔍 Checking AssemblyAI dependencies...")
             
-            # Simple check - just verify we can import and configure
-            if hasattr(aai, 'TranscriptionConfig') and hasattr(aai, 'Transcriber'):
-                logger.info("✅ AssemblyAI library is properly configured")
-                return True
-            else:
+            # Check if AssemblyAI library is properly imported
+            if not hasattr(aai, 'TranscriptionConfig') or not hasattr(aai, 'Transcriber'):
                 logger.error("❌ AssemblyAI library is not properly configured")
                 return False
+            
+            # Check if API key is set
+            if not self.api_key:
+                logger.error("❌ ASSEMBLYAI_API_KEY environment variable is not set")
+                return False
+            
+            logger.info("✅ AssemblyAI dependencies check passed")
+            return True
                 
         except Exception as e:
             logger.error(f"❌ AssemblyAI dependency check failed: {e}")
@@ -78,13 +101,13 @@ class TranscriptionWorker(BaseWorker):
             
             # Check file size
             file_size = os.path.getsize(audio_file_path)
-            logger.info(f"📊 File size: {file_size} bytes")
+            logger.info(f"📊 File size: {file_size} bytes ({file_size / (1024*1024):.2f} MB)")
             
             if file_size == 0:
                 raise ValueError("Audio file is empty")
             
             # Start transcription
-            logger.info("🤖 Calling AssemblyAI API...")
+            logger.info("🤖 Calling AssemblyAI API with medical optimization...")
             transcript = self.transcriber.transcribe(audio_file_path)
             logger.info(f"📡 AssemblyAI response status: {transcript.status}")
             
@@ -109,14 +132,14 @@ class TranscriptionWorker(BaseWorker):
             result = {
                 'text': transcript.text,
                 'confidence': getattr(transcript, 'confidence', 0.0),
-                
                 'duration': getattr(transcript, 'audio_duration', 0),
+                'words': len(transcript.text.split()) if transcript.text else 0,
                 'status': 'completed'
             }
             
             logger.info(f"✅ Transcription completed successfully!")
             logger.info(f"📝 Text length: {len(transcript.text)} characters")
-            
+            logger.info(f"📊 Word count: {result['words']} words")
             logger.info(f"🎯 Confidence: {result['confidence']:.2f}")
             logger.info(f"⏱️ Duration: {result['duration']:.1f}s")
             
@@ -134,24 +157,32 @@ class TranscriptionWorker(BaseWorker):
             }
     
     def save_transcript(self, session_id: str, transcript_data: dict) -> str:
-        """Save transcript to file"""
+        """Save transcript to file with medical formatting"""
         try:
             transcript_filename = f"{session_id}_transcript.txt"
             transcript_path = self.transcripts_dir / transcript_filename
             
-            # Create transcript content
-            content = f"Transcript for Session: {session_id}\n"
-            content += f"Generated: {datetime.utcnow().isoformat()}\n"
-            content += f"Confidence: {transcript_data.get('confidence', 0):.2f}\n"
-            content += f"Duration: {transcript_data.get('duration', 0):.2f}s\n"
-            content += "-" * 50 + "\n\n"
+            # Create medical transcript content
+            content = f"Medical Transcript for Session: {session_id}\n"
+            content += f"Generated: {datetime.utcnow().isoformat()}Z\n"
+            content += f"Confidence Score: {transcript_data.get('confidence', 0):.3f}\n"
+            content += f"Word Count: {transcript_data.get('words', 0)}\n"
+            content += f"Audio Duration: {transcript_data.get('duration', 0):.2f} seconds\n"
+            
+            # Add warning if present
+            if transcript_data.get('warning'):
+                content += f"Note: {transcript_data['warning']}\n"
+            
+            content += "=" * 60 + "\n\n"
             content += transcript_data.get('text', 'No transcript available')
+            content += "\n\n" + "=" * 60 + "\n"
+            content += "Generated by MaiChart Medical Transcription System\n"
             
             # Write to file
             with open(transcript_path, 'w', encoding='utf-8') as f:
                 f.write(content)
             
-            logger.info(f"💾 Transcript saved to {transcript_path}")
+            logger.info(f"💾 Medical transcript saved to {transcript_path}")
             return str(transcript_path)
             
         except Exception as e:
@@ -210,13 +241,13 @@ class TranscriptionWorker(BaseWorker):
             })
             
             # Transcribe audio
-            logger.info("🔄 Starting AssemblyAI transcription...")
+            logger.info("🔄 Starting AssemblyAI medical transcription...")
             transcript_result = self.transcribe_audio(filepath)
             logger.info(f"📡 Transcription result status: {transcript_result['status']}")
             
             if transcript_result['status'] == 'completed':
                 # Update status to saving
-                logger.info("💾 Saving transcript...")
+                logger.info("💾 Saving medical transcript...")
                 self.update_session_status(session_id, {
                     'status': 'processing',
                     'step': 'saving_transcript',
@@ -224,13 +255,14 @@ class TranscriptionWorker(BaseWorker):
                 
                 # Save transcript to file
                 transcript_path = self.save_transcript(session_id, transcript_result)
-                logger.info(f"📄 Transcript saved to: {transcript_path}")
+                logger.info(f"📄 Medical transcript saved to: {transcript_path}")
                 
                 # Update status to completed
                 status_update = {
                     'status': 'completed',
                     'transcript_text': transcript_result['text'],
                     'transcript_confidence': transcript_result['confidence'],
+                    'transcript_words': transcript_result.get('words', 0),
                     'transcript_path': transcript_path,
                     'processing_completed_at': datetime.utcnow().isoformat()
                 }
@@ -246,8 +278,8 @@ class TranscriptionWorker(BaseWorker):
                 logger.info("✅ Updating final status to completed...")
                 self.update_session_status(session_id, status_update)
                 
-                logger.info(f"🎉 Successfully transcribed session {session_id}")
-                logger.info(f"📊 Final stats: {len(transcript_result['text'])} chars,  {transcript_result['confidence']:.2f} confidence")
+                logger.info(f"🎉 Successfully transcribed medical session {session_id}")
+                logger.info(f"📊 Final stats: {len(transcript_result['text'])} chars, {transcript_result.get('words', 0)} words, {transcript_result['confidence']:.3f} confidence")
                 return True
             else:
                 # Update status to error
@@ -279,12 +311,17 @@ class TranscriptionWorker(BaseWorker):
 def main():
     """Main entry point"""
     try:
-        logger.info("🚀 Starting TranscriptionWorker...")
+        logger.info("🚀 Starting MaiChart Transcription Worker...")
+        
+        # Validate environment variables
+        if not os.getenv('ASSEMBLYAI_API_KEY'):
+            raise ValueError("ASSEMBLYAI_API_KEY environment variable must be set")
+        
         worker = TranscriptionWorker()
-        logger.info("✅ Worker created successfully")
+        logger.info("✅ Medical transcription worker created successfully")
         return worker.run()
     except Exception as e:
-        logger.error(f"💥 Failed to start worker: {e}")
+        logger.error(f"💥 Failed to start transcription worker: {e}")
         import traceback
         logger.error(f"Full traceback: {traceback.format_exc()}")
         return 1
