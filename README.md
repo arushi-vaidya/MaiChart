@@ -33,7 +33,7 @@ audio-processing-system/
 ├── workers/                    # Background workers
 │   ├── __init__.py            # Worker package
 │   ├── base_worker.py         # Base worker class
-│   └── ffmpeg_worker.py       # FFmpeg audio processor
+│   └── transcription_worker.py   # Transcription processor
 │
 ├── core/                       # Core application logic
 │   ├── __init__.py            # Core package
@@ -47,7 +47,7 @@ audio-processing-system/
 │
 ├── uploads/                    # Uploaded files (created at runtime)
 ├── processed_audio/           # Processed WAV files (created at runtime)
-└── logs/                      # Application logs (created at runtime)
+└── logs/                      # Application logs (created at runtime) 
 ```
 
 ## Quick Start

@@ -5,28 +5,27 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-# Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
 from workers.base_worker import BaseWorker
 
 logger = logging.getLogger(__name__)
 
-class FFmpegWorker(BaseWorker):
-    """Worker for converting audio files using FFmpeg"""
+class TranscriptionWorker(BaseWorker):
+    """Worker for transcribing audio files"""
     
     def __init__(self, config_name='default'):
-        super().__init__('ffmpeg_worker', config_name)
-        self.output_dir = self.config.PROCESSED_FOLDER
+        super().__init__('transcription_worker', config_name)
+        self.output_dir = self.config.TRANSCRIPTS_FOLDER  
         
         # Ensure output directory exists
         self.output_dir.mkdir(exist_ok=True)
         
-        logger.info(f"FFmpeg Worker initialized")
+        logger.info(f"Transcription Worker initialized")
         logger.info(f"Output directory: {self.output_dir}")
     
     def check_dependencies(self) -> bool:
-        """Check if FFmpeg is available"""
+        """Check if FFmpeg is available (needed for audio processing)"""
         try:
             result = subprocess.run(['ffmpeg', '-version'], 
                                   capture_output=True, text=True, timeout=5)
@@ -40,48 +39,42 @@ class FFmpegWorker(BaseWorker):
             logger.error(f"FFmpeg not found or not working: {e}")
             return False
     
-    def convert_audio_to_wav(self, input_path: str, output_path: str) -> bool:
-        """Convert audio file to WAV format using FFmpeg"""
+    def transcribe_audio(self, input_path: str, output_path: str) -> bool:
+        """Transcribe audio file (placeholder implementation)"""
         try:
-            logger.info(f"Converting {input_path} to {output_path}")
+            logger.info(f"Transcribing {input_path} to {output_path}")
             
-            # FFmpeg command to convert to WAV
-            cmd = [
-                'ffmpeg',
-                '-i', input_path,
-                '-acodec', self.config.OUTPUT_FORMAT,
-                '-ar', str(self.config.OUTPUT_SAMPLE_RATE),
-                '-ac', str(self.config.OUTPUT_CHANNELS),
-                '-y',  # Overwrite output file
-                output_path
-            ]
+            # For now, create a placeholder transcript
             
-            # Run FFmpeg conversion
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout
-            )
+            # Get file info
+            file_size = os.path.getsize(input_path)
             
-            if result.returncode == 0:
-                logger.info(f"Successfully converted to {output_path}")
+            # Create basic transcript data
+            transcript_data = {
+                "transcript": {
+                    "text": "This is a placeholder transcript.",
+                    "confidence": 0.95,
+                    "word_count": 12,
+                    "language": "en"
+                },
+                "metadata": {
+                    "original_file": os.path.basename(input_path),
+                    "file_size": file_size,
+                    "processed_at": datetime.utcnow().isoformat(),
+                    "processing_method": "placeholder"
+                }
+            }
+            
+            # Save transcript as JSON
+            import json
+            with open(output_path, 'w') as f:
+                json.dump(transcript_data, f, indent=2)
+            
+            logger.info(f"Successfully created transcript at {output_path}")
+            return True
                 
-                # Verify output file exists and has content
-                if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                    return True
-                else:
-                    logger.error("Output file is empty or doesn't exist")
-                    return False
-            else:
-                logger.error(f"FFmpeg conversion failed: {result.stderr}")
-                return False
-                
-        except subprocess.TimeoutExpired:
-            logger.error("FFmpeg conversion timed out")
-            return False
         except Exception as e:
-            logger.error(f"Error during conversion: {e}")
+            logger.error(f"Error during transcription: {e}")
             return False
     
     def process_message(self, message_data: dict) -> bool:
@@ -98,6 +91,7 @@ class FFmpegWorker(BaseWorker):
             # Update status to processing
             self.update_session_status(session_id, {
                 'status': 'processing',
+                'step': 'analyzing_audio',
                 'processing_started_at': datetime.utcnow().isoformat()
             })
             
@@ -112,15 +106,27 @@ class FFmpegWorker(BaseWorker):
             
             # Generate output filename
             base_name = Path(filename).stem
-            output_filename = f"{base_name}.wav"
+            output_filename = f"{base_name}_transcript.json"
             output_path = self.output_dir / output_filename
             
             logger.info(f"Processing session {session_id}: {filename} -> {output_filename}")
             
-            # Convert to WAV
-            success = self.convert_audio_to_wav(filepath, str(output_path))
+            # Update status
+            self.update_session_status(session_id, {
+                'status': 'processing',
+                'step': 'processing_audio'
+            })
+            
+            # Transcribe audio
+            success = self.transcribe_audio(filepath, str(output_path))
             
             if success:
+                # Update status
+                self.update_session_status(session_id, {
+                    'status': 'processing',
+                    'step': 'saving_transcript'
+                })
+                
                 # Get output file info
                 output_size = output_path.stat().st_size
                 
@@ -139,7 +145,7 @@ class FFmpegWorker(BaseWorker):
                 # Update status to error
                 self.update_session_status(session_id, {
                     'status': 'error',
-                    'error': 'Audio conversion failed',
+                    'error': 'Audio transcription failed',
                     'processing_failed_at': datetime.utcnow().isoformat()
                 })
                 
@@ -159,7 +165,7 @@ class FFmpegWorker(BaseWorker):
 def main():
     """Main entry point"""
     try:
-        worker = FFmpegWorker()
+        worker = TranscriptionWorker()
         return worker.run()
     except Exception as e:
         logger.error(f"Failed to start worker: {e}")

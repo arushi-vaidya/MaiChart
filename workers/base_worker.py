@@ -21,11 +21,11 @@ class BaseWorker(ABC):
         self.consumer_name = f"{self.worker_name}_{os.getpid()}"
         self.running = True
 
-        # Redis connection - Updated to include password
+        # Redis connection
         self.redis_client = RedisClient(
             host=self.config.REDIS_HOST,
             port=self.config.REDIS_PORT,
-            password=self.config.REDIS_PASSWORD,  # Added password
+            password=self.config.REDIS_PASSWORD, 
             db=self.config.REDIS_DB,
         )
 

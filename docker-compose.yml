@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   web:
     build: .
@@ -8,7 +6,7 @@ services:
       - "5001:5001"
     volumes:
       - "./uploads:/app/uploads"
-      - "./transcripts:/app/transcripts"  # Changed from processed_audio to transcripts
+      - "./transcripts:/app/transcripts"
       - "./logs:/app/logs"
     environment:
       # Redis Cloud configuration
@@ -23,12 +21,14 @@ services:
     container_name: audio_transcription_worker
     volumes:
       - "./uploads:/app/uploads"
-      - "./transcripts:/app/transcripts"  # Changed from processed_audio to transcripts
+      - "./transcripts:/app/transcripts"
       - "./logs:/app/logs"
     environment:
       # Redis Cloud configuration
       - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
       - REDIS_PORT=12617
       - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
-    command: python workers/transcription_worker.py  # Changed from ffmpeg_worker
+      # Add the missing PROCESSED_FOLDER configuration
+      - PROCESSED_FOLDER=/app/transcripts
+    command: python workers/transcription_worker.py
     restart: unless-stopped

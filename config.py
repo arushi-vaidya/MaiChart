@@ -8,7 +8,7 @@ BASE_DIR = Path(__file__).parent
 class Config:
     """Base configuration"""
 
-    # Flask settings - Updated with secure secret key
+    # Flask settings 
     SECRET_KEY = os.environ.get(
         "SECRET_KEY", "maichart-audio-processing-system-secret-key-2025"
     )
@@ -16,7 +16,7 @@ class Config:
     HOST = os.environ.get("FLASK_HOST", "0.0.0.0")
     PORT = int(os.environ.get("FLASK_PORT", 5001))
 
-    # Redis settings - Updated for Redis Cloud
+    # Redis settings 
     REDIS_HOST = os.environ.get(
         "REDIS_HOST", "redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com"
     )
@@ -30,13 +30,10 @@ class Config:
     UPLOAD_FOLDER = BASE_DIR / "uploads"
     TRANSCRIPTS_FOLDER = (
         BASE_DIR / "transcripts"
-    )  # Changed from processed_audio to transcripts
+    )  
     LOGS_FOLDER = BASE_DIR / "logs"
     MAX_FILE_SIZE = 90 * 1024 * 1024  # 90MB
     ALLOWED_EXTENSIONS = {"webm", "wav", "mp3", "ogg", "m4a"}
-
-    # Processing settings (removed audio conversion settings)
-    # These are now handled directly by the transcription service
 
     # Redis streams
     AUDIO_INPUT_STREAM = "audio_input"
@@ -59,7 +56,6 @@ class DevelopmentConfig(Config):
     """Development configuration"""
 
     DEBUG = True
-    # Override for development
     SECRET_KEY = os.environ.get(
         "SECRET_KEY",
         "MaiChart2025SecureDevelopmentKey!@#$%^&*ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefg",
@@ -70,8 +66,7 @@ class ProductionConfig(Config):
     """Production configuration"""
 
     DEBUG = False
-
-    # Use environment variable for production secret key
+    PROCESSED_FOLDER = os.getenv('PROCESSED_FOLDER', '/app/transcripts')
     SECRET_KEY = os.environ.get(
         "SECRET_KEY", "MaiChart2025AudioProcessingSystem!SecureKey#123$XyZ&*ABCDEFghijk"
     )
@@ -81,7 +76,7 @@ class TestingConfig(Config):
     """Testing configuration"""
 
     TESTING = True
-    REDIS_DB = 1  # Use different Redis DB for testing
+    REDIS_DB = 1  
 
 
 # Configuration mapping

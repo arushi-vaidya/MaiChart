@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p uploads processed_audio logs
+RUN mkdir -p uploads logs
 
 # Expose port
 EXPOSE 5001
