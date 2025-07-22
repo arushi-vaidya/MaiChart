@@ -1,8 +1,9 @@
-from flask import Flask
+from flask import Flask, request, g
 from flask_cors import CORS
 import os
 import logging
 from datetime import datetime
+import time
 
 from config import config
 from api.routes import api_bp
@@ -30,6 +31,24 @@ def create_app(config_name=None):
 
     # Setup logging
     setup_logging(app)
+
+    # Add request timing middleware
+    @app.before_request
+    def before_request():
+        g.start_time = time.time()
+
+    @app.after_request
+    def log_request(response):
+        """Log request details"""
+        try:
+            duration = time.time() - g.get('start_time', 0)
+            app.logger.info(
+                f"📡 {request.method} {request.path} - {response.status_code} "
+                f"({duration:.3f}s)"
+            )
+        except Exception as e:
+            app.logger.error(f"Error logging request: {e}")
+        return response
 
     # Register blueprints
     app.register_blueprint(api_bp)
