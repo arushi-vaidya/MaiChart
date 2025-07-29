@@ -1,0 +1,21 @@
+2025-07-22 18:28:41,651 - backup_service - INFO - 🔄 Backup Service initialized
+2025-07-22 18:28:41,651 - backup_service - INFO - 🚀 Starting MaiChart Backup Service...
+2025-07-22 18:28:41,651 - backup_service - INFO - 🔍 Running backup service health check...
+2025-07-22 18:28:41,652 - backup_service - INFO - 📊 Found 0 notes in persistent storage
+2025-07-22 18:28:41,653 - backup_service - INFO - 💾 Disk space: 44.02 GB available
+2025-07-22 18:28:41,653 - backup_service - INFO - ✅ Backup service health check passed
+2025-07-22 18:28:41,653 - backup_service - ERROR - 💥 Failed to start backup service: Invalid unit (valid units are `days`, `hours`, and `minutes`)
+2025-07-22 18:29:41,989 - backup_service - INFO - 🔄 Backup Service initialized
+2025-07-22 18:29:41,992 - backup_service - INFO - 🚀 Starting MaiChart Backup Service...
+2025-07-22 18:29:41,992 - backup_service - INFO - 🔍 Running backup service health check...
+2025-07-22 18:29:41,994 - backup_service - INFO - 📊 Found 0 notes in persistent storage
+2025-07-22 18:29:41,994 - backup_service - INFO - 💾 Disk space: 44.02 GB available
+2025-07-22 18:29:41,994 - backup_service - INFO - ✅ Backup service health check passed
+2025-07-22 18:29:41,994 - backup_service - ERROR - 💥 Failed to start backup service: Invalid unit (valid units are `days`, `hours`, and `minutes`)
+2025-07-22 18:30:42,316 - backup_service - INFO - 🔄 Backup Service initialized
+2025-07-22 18:30:42,317 - backup_service - INFO - 🚀 Starting MaiChart Backup Service...
+2025-07-22 18:30:42,317 - backup_service - INFO - 🔍 Running backup service health check...
+2025-07-22 18:30:42,318 - backup_service - INFO - 📊 Found 0 notes in persistent storage
+2025-07-22 18:30:42,318 - backup_service - INFO - 💾 Disk space: 44.03 GB available
+2025-07-22 18:30:42,318 - backup_service - INFO - ✅ Backup service health check passed
+2025-07-22 18:30:42,319 - backup_service - ERROR - 💥 Failed to start backup service: Invalid unit (valid units are `days`, `hours`, and `minutes`)

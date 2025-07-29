@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MaiChart - Medical Voice Notes</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="logo">MaiChart</div>
+        <nav class="nav">
+            <a href="#recording" class="nav-link active">Record</a>
+            <a href="#notes" class="nav-link">Notes</a>
+        </nav>
+    </header>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Recording Section -->
+        <section class="main-section" id="recording-section">
+            <div class="title-section">
+                <h1 class="main-title">Medical Voice Notes</h1>
+                <p class="subtitle">Record audio or upload files for AI-powered medical transcription</p>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <button id="recordButton" class="btn btn-primary">
+                    🎤 Start Recording
+                </button>
+                <button id="stopRecording" class="btn btn-danger" style="display: none;">
+                    ⏹️ Stop Recording
+                </button>
+                <button id="uploadRecording" class="btn btn-outline">
+                    📁 Upload Audio File
+                </button>
+                <button id="viewNotes" class="btn btn-success" onclick="showNotesSection()">
+                    📋 View All Notes
+                </button>
+            </div>
+
+            <!-- Timer -->
+            <div id="timer" class="timer" style="display: none;">00:00</div>
+
+            <!-- Status -->
+            <div id="status" class="status-indicator info">
+                Click "Start Recording" to record or "Upload Audio File" to upload an existing audio file
+            </div>
+
+            <!-- Upload Progress -->
+            <div id="uploadProgress" class="upload-progress">
+                <div id="uploadProgressBar" class="upload-progress-bar"></div>
+            </div>
+
+            <!-- File Format Info -->
+            <div class="file-info">
+                <p><strong>Supported formats:</strong> WebM, WAV, MP3, OGG, M4A</p>
+                <p><strong>Maximum file size:</strong> 90MB</p>
+                <p><strong>Processing:</strong> AI-powered transcription with medical term recognition</p>
+                <p><strong>Output:</strong> Medical transcript with confidence scoring</p>
+            </div>
+        </section>
+
+        <!-- Notes Section -->
+        <section class="notes-section" id="notes-section" style="display: none;">
+            <div class="notes-header">
+                <h2 class="notes-title">📋 Medical Notes</h2>
+                <div class="notes-controls">
+                    <input type="text" class="search-box" id="searchBox" placeholder="Search transcripts...">
+                    <button class="btn btn-outline" onclick="refreshNotes()">🔄 Refresh</button>
+                    <button class="btn btn-primary" onclick="showRecordingSection()">➕ New Note</button>
+                </div>
+            </div>
+
+            <!-- Filter Chips -->
+            <div class="filter-chips" id="filterChips">
+                <div class="filter-chip active" data-filter="all">All Notes</div>
+                <div class="filter-chip" data-filter="today">Today</div>
+                <div class="filter-chip" data-filter="week">This Week</div>
+                <div class="filter-chip" data-filter="high-confidence">High Confidence</div>
+            </div>
+
+            <!-- Notes Grid -->
+            <div class="notes-grid" id="notesGrid">
+                <!-- Notes will be loaded here -->
+            </div>
+
+            <!-- Empty State -->
+            <div class="empty-state" id="emptyState" style="display: none;">
+                <div class="empty-state-icon">📝</div>
+                <h3>No Medical Notes Yet</h3>
+                <p>Start by recording your first voice note or uploading an audio file.</p>
+                <button class="btn btn-primary" onclick="showRecordingSection()">🎤 Start Recording</button>
+            </div>
+        </section>
+    </div>
+
+    <!-- Modal for Full Transcript View -->
+    <div id="transcriptModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modalTitle">Medical Note</h3>
+                <span class="close-btn" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-transcript" id="modalTranscript"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/audio-recorder.js') }}"></script>
+</body>
+</html>
