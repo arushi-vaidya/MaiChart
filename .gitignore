@@ -7,6 +7,10 @@ __pycache__/
 venv/
 .env/
 .env.*
+# Ignore all env files anywhere
+.env
+**/.env
+
 
 # Docker-related
 *.log
