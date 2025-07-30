@@ -1,32 +1,126 @@
+# docker-compose.yml - Fixed production setup
 version: '3.8'
-
 services:
-  web:
-    build: .
-    container_name: maichart_web
+  # Backend API Server
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: maichart_backend
     ports:
       - "5001:5001"
     volumes:
-      - "./uploads:/app/uploads"
-      - "./transcripts:/app/transcripts"
-      - "./logs:/app/logs"
-    env_file:
-      - .env  
+      - "./backend/uploads:/app/uploads"
+      - "./backend/transcripts:/app/transcripts"
+      - "./backend/chunks:/app/chunks"
+      - "./backend/logs:/app/logs"
     environment:
+      - FLASK_ENV=production
+      - FLASK_DEBUG=false
       - FLASK_PORT=5001
-    command: python app.py
+      - FLASK_HOST=0.0.0.0
+      # Redis settings (using your working Redis Cloud instance)
+      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
+      - REDIS_PORT=12617
+      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
+      - REDIS_DB=0
+      # AssemblyAI API key - MUST be set
+      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 60s
+    networks:
+      - maichart_network
 
-  transcription_worker:
-    build: .
-    container_name: maichart_transcription_worker
+  # Direct Transcription Worker
+  transcription_worker_direct:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: maichart_transcription_worker_direct
     volumes:
-      - "./uploads:/app/uploads"
-      - "./transcripts:/app/transcripts"
-      - "./logs:/app/logs"
-    env_file:
-      - .env  
-    command: python workers/transcription_worker.py
+      - "./backend/uploads:/app/uploads"
+      - "./backend/transcripts:/app/transcripts"
+      - "./backend/chunks:/app/chunks"
+      - "./backend/logs:/app/logs"
+    environment:
+      - FLASK_ENV=production
+      - WORKER_TYPE=direct
+      # Redis settings
+      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
+      - REDIS_PORT=12617
+      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
+      - REDIS_DB=0
+      # AssemblyAI API key - MUST be set
+      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
+    command: python workers/transcription_worker.py direct
     restart: unless-stopped
     depends_on:
-      - web
+      backend:
+        condition: service_healthy
+    networks:
+      - maichart_network
+
+  # Chunk Transcription Worker (for large files)
+  transcription_worker_chunk:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: maichart_transcription_worker_chunk
+    volumes:
+      - "./backend/uploads:/app/uploads"
+      - "./backend/transcripts:/app/transcripts"
+      - "./backend/chunks:/app/chunks"
+      - "./backend/logs:/app/logs"
+    environment:
+      - FLASK_ENV=production
+      - WORKER_TYPE=chunk
+      # Redis settings
+      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
+      - REDIS_PORT=12617
+      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
+      - REDIS_DB=0
+      # AssemblyAI API key - MUST be set
+      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
+    command: python workers/transcription_worker.py chunk
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - maichart_network
+
+  # Frontend (Production Build)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: maichart_frontend
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_URL=http://localhost:5001
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - maichart_network
+
+networks:
+  maichart_network:
+    driver: bridge
+
+volumes:
+  uploads:
+    driver: local
+  transcripts:
+    driver: local
+  chunks:
+    driver: local
+  logs:
+    driver: local

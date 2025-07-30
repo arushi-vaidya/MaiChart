@@ -1,0 +1,66 @@
+# ======================
+# Global
+# ======================
+.env
+.dockerenv
+*.log
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
+
+# ======================
+# Python
+# ======================
+__pycache__/
+*.py[cod]
+*.egg
+*.egg-info/
+dist/
+build/
+.cache/
+venv/
+env/
+
+# ======================
+# Node / React Frontend
+# ======================
+frontend/node_modules/
+frontend/.env
+frontend/build/
+frontend/.next/
+frontend/.parcel-cache/
+
+# ======================
+# Python Backend
+# ======================
+backend/.env
+backend/__pycache__/
+backend/uploads/
+backend/transcripts/
+backend/chunks/
+backend/logs/
+
+# ======================
+# Docker
+# ======================
+**/.dockerignore
+docker-compose.override.yml
+
+# ======================
+# IDEs and Editors
+# ======================
+.vscode/
+.idea/
+*.iml
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# ======================
+# Misc
+# ======================
+*.sqlite3
+*.db
+*.pid
