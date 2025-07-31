@@ -9,21 +9,15 @@ class Config:
     """Base configuration with enhanced audio processing for FastAPI"""
 
     # FastAPI settings
-    SECRET_KEY = os.environ.get(
-        "SECRET_KEY", "maichart-audio-processing-system-secret-key-2025"
-    )
+    SECRET_KEY = os.environ.get("SECRET_KEY", "your-secret-key-here")
     DEBUG = os.environ.get("FASTAPI_DEBUG", "True").lower() == "true"
     HOST = os.environ.get("FASTAPI_HOST", "0.0.0.0")
-    PORT = int(os.environ.get("FASTAPI_PORT", os.environ.get("FLASK_PORT", 5001)))
+    PORT = int(os.environ.get("FASTAPI_PORT", 5001))
 
-    # Redis settings
-    REDIS_HOST = os.environ.get(
-        "REDIS_HOST", "redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com"
-    )
-    REDIS_PORT = int(os.environ.get("REDIS_PORT", 12617))
-    REDIS_PASSWORD = os.environ.get(
-        "REDIS_PASSWORD", "BtUjzw407WUWoZueZH5fEb2mdf51oOSC"
-    )
+    # Redis settings - all from environment variables
+    REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
+    REDIS_PORT = int(os.environ.get("REDIS_PORT", 6379))
+    REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", None)
     REDIS_DB = int(os.environ.get("REDIS_DB", 0))
 
     # File upload settings - ENHANCED FOR LONG FILES

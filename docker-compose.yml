@@ -19,13 +19,18 @@ services:
       - FASTAPI_DEBUG=false
       - FASTAPI_PORT=5001
       - FASTAPI_HOST=0.0.0.0
-      # Redis settings (using your working Redis Cloud instance)
-      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
-      - REDIS_PORT=12617
-      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
-      - REDIS_DB=0
-      # AssemblyAI API key - MUST be set
+      # Redis settings - from environment variables
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=${REDIS_DB}
+      # AssemblyAI API key - MUST be set in .env
       - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
+      # Security
+      - SECRET_KEY=${SECRET_KEY}
+      # File settings
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE}
+      - ALLOWED_EXTENSIONS=${ALLOWED_EXTENSIONS}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
@@ -50,12 +55,12 @@ services:
     environment:
       - FASTAPI_ENV=production
       - WORKER_TYPE=direct
-      # Redis settings
-      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
-      - REDIS_PORT=12617
-      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
-      - REDIS_DB=0
-      # AssemblyAI API key - MUST be set
+      # Redis settings - from environment variables
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=${REDIS_DB}
+      # AssemblyAI API key - MUST be set in .env
       - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
     command: python workers/transcription_worker.py direct
     restart: unless-stopped
@@ -79,12 +84,12 @@ services:
     environment:
       - FASTAPI_ENV=production
       - WORKER_TYPE=chunk
-      # Redis settings
-      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
-      - REDIS_PORT=12617
-      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
-      - REDIS_DB=0
-      # AssemblyAI API key - MUST be set
+      # Redis settings - from environment variables
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=${REDIS_DB}
+      # AssemblyAI API key - MUST be set in .env
       - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
     command: python workers/transcription_worker.py chunk
     restart: unless-stopped
