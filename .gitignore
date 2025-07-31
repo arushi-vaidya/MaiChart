@@ -1,66 +1,470 @@
 # ======================
-# Global
+# Environment Variables
 # ======================
 .env
-.dockerenv
-*.log
-*.bak
-*.swp
-.DS_Store
-Thumbs.db
-
-# ======================
-# Python
-# ======================
-__pycache__/
-*.py[cod]
-*.egg
-*.egg-info/
-dist/
-build/
-.cache/
-venv/
-env/
-
-# ======================
-# Node / React Frontend
-# ======================
-frontend/node_modules/
+.env.local
+.env.development
+.env.production
+.env.test
+backend/.env
 frontend/.env
-frontend/build/
-frontend/.next/
-frontend/.parcel-cache/
 
 # ======================
 # Python Backend
 # ======================
-backend/.env
-backend/__pycache__/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# ======================
+# Backend Application Files
+# ======================
 backend/uploads/
 backend/transcripts/
 backend/chunks/
 backend/logs/
+backend/*.log
+backend/*.pid
+backend/.pytest_cache/
+backend/htmlcov/
+
+# ======================
+# Node.js / React Frontend
+# ======================
+frontend/node_modules/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/lerna-debug.log*
+frontend/.pnpm-debug.log*
+
+# Runtime data
+frontend/pids
+frontend/*.pid
+frontend/*.seed
+frontend/*.pid.lock
+
+# Coverage directory used by tools like istanbul
+frontend/coverage/
+frontend/*.lcov
+
+# nyc test coverage
+frontend/.nyc_output
+
+# Grunt intermediate storage
+frontend/.grunt
+
+# Bower dependency directory
+frontend/bower_components
+
+# node-waf configuration
+frontend/.lock-wscript
+
+# Compiled binary addons
+frontend/build/Release
+
+# Dependency directories
+frontend/jspm_packages/
+
+# Snowpack dependency directory
+frontend/web_modules/
+
+# TypeScript cache
+frontend/*.tsbuildinfo
+
+# Optional npm cache directory
+frontend/.npm
+
+# Optional eslint cache
+frontend/.eslintcache
+
+# Optional stylelint cache
+frontend/.stylelintcache
+
+# Microbundle cache
+frontend/.rpt2_cache/
+frontend/.rts2_cache_cjs/
+frontend/.rts2_cache_es/
+frontend/.rts2_cache_umd/
+
+# Optional REPL history
+frontend/.node_repl_history
+
+# Output of 'npm pack'
+frontend/*.tgz
+
+# Yarn Integrity file
+frontend/.yarn-integrity
+
+# parcel-bundler cache
+frontend/.cache
+frontend/.parcel-cache
+
+# Next.js build output
+frontend/.next
+frontend/out
+
+# Nuxt.js build / generate output
+frontend/.nuxt
+frontend/dist
+
+# Gatsby files
+frontend/.cache/
+frontend/public
+
+# Storybook build outputs
+frontend/.out
+frontend/.storybook-out
+frontend/storybook-static
+
+# Temporary folders
+frontend/tmp/
+frontend/temp/
+
+# React build output
+frontend/build/
+
+# Package lock files (if you want to ignore them)
+# frontend/package-lock.json
+# frontend/yarn.lock
 
 # ======================
 # Docker
 # ======================
-**/.dockerignore
+.dockerignore
 docker-compose.override.yml
+.docker/
 
 # ======================
 # IDEs and Editors
 # ======================
 .vscode/
 .idea/
-*.iml
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*.tmp
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Eclipse
+.metadata
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+.recommenders
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
 
 # ======================
-# Misc
+# Operating System Files
 # ======================
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ======================
+# Logs and Databases
+# ======================
+*.log
+*.sql
+*.sqlite
 *.sqlite3
 *.db
+*.db3
+
+# ======================
+# Temporary and Cache Files
+# ======================
+*.tmp
+*.temp
+*.cache
+*.bak
+*.backup
+*.old
+*.orig
+*.rej
+
+# ======================
+# Secrets and Keys
+# ======================
+*.pem
+*.key
+*.crt
+*.csr
+secrets/
+keys/
+
+# ======================
+# Application Specific
+# ======================
+
+# Redis dumps
+*.rdb
+
+# Audio processing temporary files
+*.wav.tmp
+*.mp3.tmp
+*.webm.tmp
+
+# Transcription temporary files
+*.txt.tmp
+
+# FFmpeg temporary files
+ffmpeg_*
+temp_audio_*
+
+# Assembly AI cache (if any)
+assemblyai_cache/
+
+# Custom application logs
+maichart_*.log
+transcription_*.log
+worker_*.log
+
+# ======================
+# Testing
+# ======================
+.coverage
+.pytest_cache/
+.tox/
+htmlcov/
+.cache/
+
+# ======================
+# Documentation
+# ======================
+docs/_build/
+docs/build/
+site/
+
+# ======================
+# Miscellaneous
+# ======================
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ======================
+# MacOS Specific
+# ======================
+.DS_Store?
+.DS_Store
+.Spotlight-V100
+.Trashes
+Icon?
+ehthumbs.db
+Thumbs.db
+
+# ======================
+# Project Specific Ignores
+# ======================
+
+# Don't track uploaded audio files in production
+uploads/*.webm
+uploads/*.wav
+uploads/*.mp3
+uploads/*.ogg
+uploads/*.m4a
+uploads/*.flac
+
+# Don't track generated transcripts
+transcripts/*.txt
+
+# Don't track audio chunks
+chunks/*.wav
+
+# Don't track application logs
+logs/*.log
+
+# Don't track Redis backup files
+*.rdb
+
+# Don't track process IDs
 *.pid
+
+# Application specific temporary files
+temp_*
+*.processing
+*.tmp_upload
