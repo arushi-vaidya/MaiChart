@@ -1,42 +1,40 @@
-from flask import jsonify, current_app
+from fastapi import UploadFile, HTTPException
 from werkzeug.utils import secure_filename
 import logging
+from pathlib import Path
 
 from core.audio_handler import AudioHandler
 
 logger = logging.getLogger(__name__)
 
 
-def validate_upload_request(request):
-    """Validate audio upload request"""
+async def validate_upload_request(file: UploadFile, config):
+    """Validate audio upload request for FastAPI"""
 
-    # Check if audio file is present
-    if "audio" not in request.files:
+    # Check if file is provided
+    if not file:
         return {"valid": False, "error": "No audio file provided"}
 
-    file = request.files["audio"]
-
-    # Check if file is selected
-    if file.filename == "":
-        return {"valid": False, "error": "No file selected"}
+    # Check if file has content
+    if file.size == 0:
+        return {"valid": False, "error": "Empty file uploaded"}
 
     # Check file size
-    if hasattr(file, "content_length") and file.content_length:
-        if file.content_length > current_app.config["MAX_FILE_SIZE"]:
-            return {
-                "valid": False,
-                "error": f"File too large. Maximum size: {current_app.config['MAX_FILE_SIZE'] // (1024 * 1024)}MB",
-            }
-
-    # Check file extension
-    if not AudioHandler.is_allowed_file(file.filename):
+    if file.size and file.size > config.MAX_FILE_SIZE:
         return {
             "valid": False,
-            "error": f"File type not allowed. Allowed types: {', '.join(current_app.config['ALLOWED_EXTENSIONS'])}",
+            "error": f"File too large. Maximum size: {config.MAX_FILE_SIZE // (1024 * 1024)}MB",
+        }
+
+    # Check file extension
+    if not AudioHandler.is_allowed_file(file.filename, config):
+        return {
+            "valid": False,
+            "error": f"File type not allowed. Allowed types: {', '.join(config.ALLOWED_EXTENSIONS)}",
         }
 
     # Secure the filename
-    filename = secure_filename(file.filename)
+    filename = secure_filename(file.filename) if file.filename else "audio_file"
     if not filename:
         return {"valid": False, "error": "Invalid filename"}
 
@@ -44,11 +42,10 @@ def validate_upload_request(request):
 
 
 def handle_api_error(exception, message="An error occurred"):
-    """Handle API errors consistently"""
+    """Handle API errors consistently for FastAPI"""
     error_msg = f"{message}: {str(exception)}"
     logger.error(error_msg)
-
-    return jsonify({"error": message}), 500
+    raise HTTPException(status_code=500, detail=message)
 
 
 def format_file_size(size_bytes):
@@ -88,3 +85,8 @@ def validate_session_id(session_id):
         return True
     except ValueError:
         return False
+
+
+def get_config(request):
+    """Get config from FastAPI request"""
+    return request.app.state.config

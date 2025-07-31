@@ -4,8 +4,9 @@ import time
 import json
 from pathlib import Path
 from datetime import datetime
-from flask import current_app
+from fastapi import UploadFile
 import logging
+import aiofiles
 
 from .redis_client import RedisClient
 from .audio_chunker import AudioChunker
@@ -15,27 +16,29 @@ logger = logging.getLogger(__name__)
 
 class AudioHandler:
     """
-    Enhanced audio handler with chunking and parallel processing
+    Enhanced audio handler with chunking and parallel processing for FastAPI
     Think of this as the "Air Traffic Control" for your audio processing
     """
 
-    def __init__(self):
+    def __init__(self, config):
+        self.config = config
+        
         # Enhanced Redis client with password
         self.redis_client = RedisClient(
-            host=current_app.config["REDIS_HOST"],
-            port=current_app.config["REDIS_PORT"],
-            password=current_app.config["REDIS_PASSWORD"],
-            db=current_app.config["REDIS_DB"],
+            host=config.REDIS_HOST,
+            port=config.REDIS_PORT,
+            password=config.REDIS_PASSWORD,
+            db=config.REDIS_DB,
         )
 
         # Initialize chunker for long audio files
         self.chunker = AudioChunker(
-            chunks_folder=current_app.config["CHUNKS_FOLDER"],
-            chunk_duration=current_app.config["CHUNK_DURATION"],
-            overlap=current_app.config["CHUNK_OVERLAP"],
+            chunks_folder=config.CHUNKS_FOLDER,
+            chunk_duration=config.CHUNK_DURATION,
+            overlap=config.CHUNK_OVERLAP,
         )
 
-    def save_uploaded_file(self, file, timestamp=None):
+    async def save_uploaded_file(self, file: UploadFile, timestamp=None):
         """Save uploaded audio file and route to appropriate processing pipeline"""
         try:
             # Generate unique session ID
@@ -48,11 +51,14 @@ class AudioHandler:
             # Create filename with session ID and timestamp
             file_extension = self.get_file_extension(file.filename)
             filename = f"{session_id}_{timestamp}{file_extension}"
-            filepath = current_app.config["UPLOAD_FOLDER"] / filename
+            filepath = self.config.UPLOAD_FOLDER / filename
 
-            # Save file
+            # Save file asynchronously
             logger.info(f"💾 Saving uploaded file: {filepath}")
-            file.save(str(filepath))
+            
+            async with aiofiles.open(filepath, 'wb') as f:
+                content = await file.read()
+                await f.write(content)
 
             # Get file info
             file_size = filepath.stat().st_size
@@ -64,7 +70,7 @@ class AudioHandler:
 
             # Decide processing strategy based on file characteristics
             if self.chunker.should_chunk_audio(
-                str(filepath), current_app.config["CHUNK_DURATION"]
+                str(filepath), self.config.CHUNK_DURATION
             ):
                 logger.info("🚛 Large file detected - using chunked processing")
                 return self._process_chunked_audio(
@@ -113,7 +119,7 @@ class AudioHandler:
             self.redis_client.set_session_status(
                 session_id,
                 session_data,
-                expire_seconds=current_app.config["SESSION_EXPIRE_TIME"],
+                expire_seconds=self.config.SESSION_EXPIRE_TIME,
             )
 
             # Queue chunks for parallel processing
@@ -180,7 +186,7 @@ class AudioHandler:
         """Queue individual chunks for parallel processing"""
         try:
             queued_count = 0
-            chunk_stream = current_app.config["AUDIO_CHUNK_STREAM"]
+            chunk_stream = self.config.AUDIO_CHUNK_STREAM
 
             for chunk_info in chunks_info:
                 # Prepare chunk data for Redis stream
@@ -212,7 +218,7 @@ class AudioHandler:
                     },
                 )
                 self.redis_client.client.expire(
-                    chunk_status_key, current_app.config["SESSION_EXPIRE_TIME"]
+                    chunk_status_key, self.config.SESSION_EXPIRE_TIME
                 )
 
                 queued_count += 1
@@ -244,7 +250,7 @@ class AudioHandler:
             }
 
             # Add to Redis stream
-            stream_name = current_app.config["AUDIO_INPUT_STREAM"]
+            stream_name = self.config.AUDIO_INPUT_STREAM
             stream_id = self.redis_client.add_to_stream(stream_name, audio_data)
 
             # Set initial session status
@@ -258,7 +264,7 @@ class AudioHandler:
                     "file_size": file_size,
                     "original_format": self.get_file_extension(filename).lstrip("."),
                 },
-                expire_seconds=current_app.config["SESSION_EXPIRE_TIME"],
+                expire_seconds=self.config.SESSION_EXPIRE_TIME,
             )
 
             logger.info(f"📤 Queued for processing: {session_id} -> {stream_id}")
@@ -470,7 +476,7 @@ class AudioHandler:
         try:
             transcript_filename = f"{session_id}_merged_transcript.txt"
             transcript_path = (
-                current_app.config["TRANSCRIPTS_FOLDER"] / transcript_filename
+                self.config.TRANSCRIPTS_FOLDER / transcript_filename
             )
 
             # Create enhanced medical transcript content
@@ -601,21 +607,21 @@ class AudioHandler:
         return Path(filename).suffix.lower() or ".webm"
 
     @staticmethod
-    def is_allowed_file(filename):
+    def is_allowed_file(filename, config):
         """Check if file extension is allowed"""
         if not filename:
             return False
 
         extension = Path(filename).suffix.lower().lstrip(".")
-        return extension in current_app.config["ALLOWED_EXTENSIONS"]
+        return extension in config.ALLOWED_EXTENSIONS
 
     def get_system_stats(self):
         """Get enhanced system statistics"""
         try:
-            stream_name = current_app.config["AUDIO_INPUT_STREAM"]
-            chunk_stream_name = current_app.config["AUDIO_CHUNK_STREAM"]
-            consumer_group = current_app.config["CONSUMER_GROUP"]
-            chunk_consumer_group = current_app.config["CHUNK_CONSUMER_GROUP"]
+            stream_name = self.config.AUDIO_INPUT_STREAM
+            chunk_stream_name = self.config.AUDIO_CHUNK_STREAM
+            consumer_group = self.config.CONSUMER_GROUP
+            chunk_consumer_group = self.config.CHUNK_CONSUMER_GROUP
 
             stats = {
                 "redis_connected": self.redis_client.ping(),
@@ -632,10 +638,10 @@ class AudioHandler:
                     )
                 ),
                 "upload_folder_size": self._get_folder_size(
-                    current_app.config["UPLOAD_FOLDER"]
+                    self.config.UPLOAD_FOLDER
                 ),
                 "chunks_folder_size": self._get_folder_size(
-                    current_app.config["CHUNKS_FOLDER"]
+                    self.config.CHUNKS_FOLDER
                 ),
             }
 

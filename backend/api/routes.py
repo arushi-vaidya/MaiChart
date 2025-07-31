@@ -1,122 +1,142 @@
-from flask import Blueprint, request, jsonify, current_app, send_file
-from werkzeug.utils import secure_filename
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Request
+from fastapi.responses import JSONResponse, FileResponse
+from typing import Optional, List
 import logging
 from datetime import datetime
 from pathlib import Path
 import os
-import glob
+import json
+import tempfile
 
 from core.audio_handler import AudioHandler
-from .utils import validate_upload_request, handle_api_error
+from .utils import validate_upload_request, handle_api_error, get_config
 
 logger = logging.getLogger(__name__)
 
-# Create blueprint
-api_bp = Blueprint("api", __name__, url_prefix="/api")
+# Create router
+api_router = APIRouter()
 
 
-@api_bp.route("/upload_audio", methods=["POST"])
-def upload_audio():
+# Dependency to get config
+def get_config_dep(request: Request):
+    return request.app.state.config
+
+
+@api_router.post("/upload_audio")
+async def upload_audio(
+    request: Request,
+    audio: UploadFile = File(...),
+    timestamp: Optional[str] = Form(None),
+    config = Depends(get_config_dep)
+):
     """Upload audio file for processing"""
     try:
         logger.info("Audio upload request received")
 
         # Validate request
-        validation_result = validate_upload_request(request)
+        validation_result = await validate_upload_request(audio, config)
         if not validation_result["valid"]:
-            return jsonify({"error": validation_result["error"]}), 400
+            raise HTTPException(status_code=400, detail=validation_result["error"])
 
-        file = request.files["audio"]
-        timestamp = request.form.get("timestamp")
+        # Use provided timestamp or current time
+        if timestamp is None:
+            timestamp = str(int(datetime.now().timestamp() * 1000))
 
         # Initialize audio handler
-        audio_handler = AudioHandler()
+        audio_handler = AudioHandler(config)
 
         # Save file and queue for processing
-        result = audio_handler.save_uploaded_file(file, timestamp)
+        result = await audio_handler.save_uploaded_file(audio, timestamp)
 
-        return jsonify(
-            {
-                "success": True,
-                "id": result["session_id"],
-                "filename": result["filename"],
-                "size": result["file_size"],
-                "message": "Audio uploaded successfully and queued for transcription",
-            }
-        )
+        return JSONResponse(content={
+            "success": True,
+            "id": result["session_id"],
+            "filename": result["filename"],
+            "size": result["file_size"],
+            "message": "Audio uploaded successfully and queued for transcription",
+        })
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error uploading audio: {str(e)}")
-        return handle_api_error(e, "Upload failed")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
-@api_bp.route("/status/<session_id>")
-def get_status(session_id):
+@api_router.get("/status/{session_id}")
+async def get_status(session_id: str, request: Request, config = Depends(get_config_dep)):
     """Get processing status for a session"""
     try:
-        audio_handler = AudioHandler()
+        audio_handler = AudioHandler(config)
         status_data = audio_handler.get_session_status(session_id)
 
         if not status_data:
-            return jsonify({"error": "Session not found"}), 404
+            raise HTTPException(status_code=404, detail="Session not found")
 
-        return jsonify(status_data)
+        return JSONResponse(content=status_data)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting status: {str(e)}")
-        return handle_api_error(e, "Status check failed")
+        raise HTTPException(status_code=500, detail="Status check failed")
 
 
-@api_bp.route("/transcript/<session_id>")
-def get_transcript(session_id):
+@api_router.get("/transcript/{session_id}")
+async def get_transcript(session_id: str, request: Request, config = Depends(get_config_dep)):
     """Get the transcript for a session"""
     try:
-        audio_handler = AudioHandler()
+        audio_handler = AudioHandler(config)
         transcript_data = audio_handler.get_transcript_data(session_id)
 
         if not transcript_data:
-            return jsonify({"error": "Transcript not found or not ready"}), 404
+            raise HTTPException(status_code=404, detail="Transcript not found or not ready")
 
-        return jsonify(
-            {"success": True, "session_id": session_id, "transcript": transcript_data}
-        )
+        return JSONResponse(content={
+            "success": True,
+            "session_id": session_id,
+            "transcript": transcript_data
+        })
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting transcript: {str(e)}")
-        return handle_api_error(e, "Transcript retrieval failed")
+        raise HTTPException(status_code=500, detail="Transcript retrieval failed")
 
 
-@api_bp.route("/transcript/<session_id>/download")
-def download_transcript(session_id):
+@api_router.get("/transcript/{session_id}/download")
+async def download_transcript(session_id: str, request: Request, config = Depends(get_config_dep)):
     """Download transcript as a text file"""
     try:
-        audio_handler = AudioHandler()
+        audio_handler = AudioHandler(config)
         status_data = audio_handler.get_session_status(session_id)
         
         if not status_data or status_data.get("status") != "completed":
-            return jsonify({"error": "Transcript not found or not ready"}), 404
+            raise HTTPException(status_code=404, detail="Transcript not found or not ready")
 
         transcript_path = status_data.get("transcript_path")
         if transcript_path and os.path.exists(transcript_path):
-            return send_file(
-                transcript_path,
-                as_attachment=True,
-                download_name=f"medical_note_{session_id[:8]}.txt",
-                mimetype="text/plain"
+            return FileResponse(
+                path=transcript_path,
+                filename=f"medical_note_{session_id[:8]}.txt",
+                media_type="text/plain"
             )
         else:
-            return jsonify({"error": "Transcript file not found"}), 404
+            raise HTTPException(status_code=404, detail="Transcript file not found")
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error downloading transcript: {str(e)}")
-        return handle_api_error(e, "Download failed")
+        raise HTTPException(status_code=500, detail="Download failed")
 
 
-@api_bp.route("/notes")
-def get_all_notes():
+@api_router.get("/notes")
+async def get_all_notes(request: Request, config = Depends(get_config_dep)):
     """Get all transcribed notes"""
     try:
-        audio_handler = AudioHandler()
+        audio_handler = AudioHandler(config)
         
         # Get all completed sessions from Redis
         all_notes = []
@@ -148,7 +168,7 @@ def get_all_notes():
         
         logger.info(f"Retrieved {len(all_notes)} completed notes")
         
-        return jsonify({
+        return JSONResponse(content={
             "success": True,
             "count": len(all_notes),
             "notes": all_notes
@@ -156,18 +176,18 @@ def get_all_notes():
 
     except Exception as e:
         logger.error(f"Error getting all notes: {str(e)}")
-        return handle_api_error(e, "Failed to retrieve notes")
+        raise HTTPException(status_code=500, detail="Failed to retrieve notes")
 
 
-@api_bp.route("/notes/search")
-def search_notes():
+@api_router.get("/notes/search")
+async def search_notes(q: str, request: Request, config = Depends(get_config_dep)):
     """Search notes by text content"""
     try:
-        query = request.args.get("q", "").lower()
-        if not query:
-            return jsonify({"error": "Search query required"}), 400
+        if not q:
+            raise HTTPException(status_code=400, detail="Search query required")
 
-        audio_handler = AudioHandler()
+        query = q.lower()
+        audio_handler = AudioHandler(config)
         
         # Get all notes
         all_notes = []
@@ -197,23 +217,25 @@ def search_notes():
         # Sort by relevance and creation date
         all_notes.sort(key=lambda x: x["created_at"] or "", reverse=True)
         
-        return jsonify({
+        return JSONResponse(content={
             "success": True,
-            "query": query,
+            "query": q,
             "count": len(all_notes),
             "notes": all_notes
         })
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error searching notes: {str(e)}")
-        return handle_api_error(e, "Search failed")
+        raise HTTPException(status_code=500, detail="Search failed")
 
 
-@api_bp.route("/notes/stats")
-def get_notes_stats():
+@api_router.get("/notes/stats")
+async def get_notes_stats(request: Request, config = Depends(get_config_dep)):
     """Get statistics about all notes"""
     try:
-        audio_handler = AudioHandler()
+        audio_handler = AudioHandler(config)
         
         total_notes = 0
         total_words = 0
@@ -263,7 +285,7 @@ def get_notes_stats():
         avg_words = total_words / total_notes if total_notes > 0 else 0
         avg_duration = total_duration / total_notes if total_notes > 0 else 0
         
-        return jsonify({
+        return JSONResponse(content={
             "success": True,
             "stats": {
                 "total_notes": total_notes,
@@ -284,40 +306,39 @@ def get_notes_stats():
 
     except Exception as e:
         logger.error(f"Error getting notes stats: {str(e)}")
-        return handle_api_error(e, "Stats retrieval failed")
+        raise HTTPException(status_code=500, detail="Stats retrieval failed")
 
 
-@api_bp.route("/health")
-def health_check():
+@api_router.get("/health")
+async def health_check(request: Request, config = Depends(get_config_dep)):
     """Health check endpoint"""
     try:
-        audio_handler = AudioHandler()
+        audio_handler = AudioHandler(config)
         stats = audio_handler.get_system_stats()
 
-        return jsonify(
-            {
-                "status": "healthy" if stats.get("redis_connected") else "degraded",
-                "timestamp": datetime.utcnow().isoformat(),
-                "stats": stats,
-            }
-        )
+        return JSONResponse(content={
+            "status": "healthy" if stats.get("redis_connected") else "degraded",
+            "timestamp": datetime.utcnow().isoformat(),
+            "stats": stats,
+        })
 
     except Exception as e:
         logger.error(f"Health check error: {str(e)}")
-        return jsonify(
-            {
+        return JSONResponse(
+            status_code=500,
+            content={
                 "status": "unhealthy",
                 "error": str(e),
                 "timestamp": datetime.utcnow().isoformat(),
             }
-        ), 500
+        )
 
 
-@api_bp.route("/cleanup/<session_id>", methods=["DELETE"])
-def cleanup_session(session_id):
+@api_router.delete("/cleanup/{session_id}")
+async def cleanup_session(session_id: str, request: Request, config = Depends(get_config_dep)):
     """Clean up files and data for a session"""
     try:
-        audio_handler = AudioHandler()
+        audio_handler = AudioHandler(config)
         
         # Clean up files
         success = audio_handler.cleanup_session_files(session_id)
@@ -326,34 +347,39 @@ def cleanup_session(session_id):
         audio_handler.redis_client.client.delete(f"session_status:{session_id}")
         
         if success:
-            return jsonify({"success": True, "message": "Session cleaned up successfully"})
+            message = "Session cleaned up successfully"
         else:
-            return jsonify({"success": True, "message": "Session data removed (no files to clean up)"})
+            message = "Session data removed (no files to clean up)"
+            
+        return JSONResponse(content={"success": True, "message": message})
 
     except Exception as e:
         logger.error(f"Error cleaning up session: {str(e)}")
-        return handle_api_error(e, "Cleanup failed")
+        raise HTTPException(status_code=500, detail="Cleanup failed")
 
 
-@api_bp.route("/stats")
-def get_stats():
+@api_router.get("/stats")
+async def get_stats(request: Request, config = Depends(get_config_dep)):
     """Get system statistics"""
     try:
-        audio_handler = AudioHandler()
+        audio_handler = AudioHandler(config)
         stats = audio_handler.get_system_stats()
 
-        return jsonify({"timestamp": datetime.utcnow().isoformat(), "stats": stats})
+        return JSONResponse(content={
+            "timestamp": datetime.utcnow().isoformat(),
+            "stats": stats
+        })
 
     except Exception as e:
         logger.error(f"Error getting stats: {str(e)}")
-        return handle_api_error(e, "Stats retrieval failed")
+        raise HTTPException(status_code=500, detail="Stats retrieval failed")
 
 
-@api_bp.route("/export/notes")
-def export_notes():
+@api_router.get("/export/notes")
+async def export_notes(request: Request, config = Depends(get_config_dep)):
     """Export all notes as a JSON file"""
     try:
-        audio_handler = AudioHandler()
+        audio_handler = AudioHandler(config)
         
         # Get all completed notes
         all_notes = []
@@ -387,42 +413,19 @@ def export_notes():
         }
         
         # Create temporary file
-        import tempfile
-        import json
-        
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             json.dump(export_data, f, indent=2)
             temp_path = f.name
         
-        return send_file(
-            temp_path,
-            as_attachment=True,
-            download_name=f"medical_notes_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-            mimetype="application/json"
+        return FileResponse(
+            path=temp_path,
+            filename=f"medical_notes_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            media_type="application/json"
         )
 
     except Exception as e:
         logger.error(f"Error exporting notes: {str(e)}")
-        return handle_api_error(e, "Export failed")
+        raise HTTPException(status_code=500, detail="Export failed")
 
 
-# Error handlers for the blueprint
-@api_bp.errorhandler(413)
-def file_too_large(error):
-    """Handle file too large error"""
-    return jsonify(
-        {"error": "File too large", "max_size": current_app.config["MAX_FILE_SIZE"]}
-    ), 413
-
-
-@api_bp.errorhandler(404)
-def not_found(error):
-    """Handle 404 errors"""
-    return jsonify({"error": "Endpoint not found"}), 404
-
-
-@api_bp.errorhandler(500)
-def internal_error(error):
-    """Handle internal server errors"""
-    logger.error(f"Internal server error: {error}")
-    return jsonify({"error": "Internal server error"}), 500
+# Error handlers would be handled by FastAPI's built-in exception handling

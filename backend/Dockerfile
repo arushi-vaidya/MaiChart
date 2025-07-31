@@ -1,4 +1,4 @@
-# Backend Dockerfile - Fixed for production
+# FastAPI Backend Dockerfile - Production ready
 FROM python:3.11-slim
 
 # Install system dependencies including FFmpeg and curl for health checks
@@ -35,7 +35,7 @@ USER appuser
 # Expose port
 EXPOSE 5001
 
-# Add health check script
+# Add health check script for FastAPI
 COPY --chown=appuser:appuser <<EOF /app/healthcheck.py
 #!/usr/bin/env python3
 import requests
@@ -69,5 +69,5 @@ RUN chmod +x /app/healthcheck.py
 HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=5 \
     CMD python /app/healthcheck.py
 
-# Default command
-CMD ["python", "app.py"]
+# Default command - run FastAPI with uvicorn
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5001"]

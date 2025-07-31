@@ -1,12 +1,12 @@
-# docker-compose.yml - Fixed production setup
+# docker-compose.yml - FastAPI production setup
 version: '3.8'
 services:
-  # Backend API Server
+  # FastAPI Backend Server
   backend:
     build: 
       context: ./backend
       dockerfile: Dockerfile
-    container_name: maichart_backend
+    container_name: maichart_fastapi_backend
     ports:
       - "5001:5001"
     volumes:
@@ -15,10 +15,10 @@ services:
       - "./backend/chunks:/app/chunks"
       - "./backend/logs:/app/logs"
     environment:
-      - FLASK_ENV=production
-      - FLASK_DEBUG=false
-      - FLASK_PORT=5001
-      - FLASK_HOST=0.0.0.0
+      - FASTAPI_ENV=production
+      - FASTAPI_DEBUG=false
+      - FASTAPI_PORT=5001
+      - FASTAPI_HOST=0.0.0.0
       # Redis settings (using your working Redis Cloud instance)
       - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
       - REDIS_PORT=12617
@@ -48,7 +48,7 @@ services:
       - "./backend/chunks:/app/chunks"
       - "./backend/logs:/app/logs"
     environment:
-      - FLASK_ENV=production
+      - FASTAPI_ENV=production
       - WORKER_TYPE=direct
       # Redis settings
       - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
@@ -77,7 +77,7 @@ services:
       - "./backend/chunks:/app/chunks"
       - "./backend/logs:/app/logs"
     environment:
-      - FLASK_ENV=production
+      - FASTAPI_ENV=production
       - WORKER_TYPE=chunk
       # Redis settings
       - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com

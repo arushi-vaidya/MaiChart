@@ -1,113 +1,204 @@
-from flask import Flask, request, g
-from flask_cors import CORS
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 import os
 import logging
-from datetime import datetime
 import time
+from datetime import datetime
+from contextlib import asynccontextmanager
 
 from config import config
-from api.routes import api_bp
+from api.routes import api_router
 from core.redis_client import RedisClient
 
 
-def create_app(config_name=None):
-    """Application factory"""
-
-    if config_name is None:
-        config_name = os.environ.get("FLASK_ENV", "default")
-
-    app = Flask(__name__)
-    app.config.from_object(config[config_name])
-
-    # Enable CORS for React frontend
-    CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000"])
-
+# Async context manager for startup/shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle application startup and shutdown"""
+    # Startup
+    logger = logging.getLogger(__name__)
+    logger.info("Starting FastAPI Medical Transcription System...")
+    
     # Create necessary directories
-    config[config_name].create_directories()
-
-    # Setup logging
-    setup_logging(app)
-
-    # Add request timing middleware
-    @app.before_request
-    def before_request():
-        g.start_time = time.time()
-
-    @app.after_request
-    def log_request(response):
-        """Log request details"""
-        try:
-            duration = time.time() - g.get('start_time', 0)
-            app.logger.info(
-                f"📡 {request.method} {request.path} - {response.status_code} "
-                f"({duration:.3f}s)"
-            )
-        except Exception as e:
-            app.logger.error(f"Error logging request: {e}")
-        return response
-
-    # Register blueprints
-    app.register_blueprint(api_bp)
-
+    config_obj = config[os.getenv("FASTAPI_ENV", "default")]
+    config_obj.create_directories()
+    
     # Initialize Redis client
     try:
         redis_client = RedisClient(
-            host=app.config["REDIS_HOST"],
-            port=app.config["REDIS_PORT"],
-            password=app.config["REDIS_PASSWORD"],  
-            db=app.config["REDIS_DB"],
+            host=config_obj.REDIS_HOST,
+            port=config_obj.REDIS_PORT,
+            password=config_obj.REDIS_PASSWORD,
+            db=config_obj.REDIS_DB,
         )
-        app.logger.info("Redis connection established")
+        app.state.redis_client = redis_client
+        logger.info("✅ Redis connection established")
     except Exception as e:
-        app.logger.error(f"Redis connection failed: {e}")
+        logger.error(f"❌ Redis connection failed: {e}")
         raise
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down FastAPI Medical Transcription System...")
 
+
+def create_app(config_name=None):
+    """Application factory for FastAPI"""
+    
+    if config_name is None:
+        config_name = os.environ.get("FASTAPI_ENV", "default")
+
+    config_obj = config[config_name]
+    
+    # Create FastAPI app with lifespan
+    app = FastAPI(
+        title="MaiChart - Medical Voice Notes API",
+        description="AI-powered medical voice note transcription using AssemblyAI",
+        version="2.0.0",
+        docs_url="/docs",
+        redoc_url="/redoc",
+        lifespan=lifespan
+    )
+    
+    # Store config in app state
+    app.state.config = config_obj
+    
+    # Setup logging
+    setup_logging(app, config_obj)
+    
+    # Add middleware
+    setup_middleware(app, config_obj)
+    
+    # Add request timing middleware
+    @app.middleware("http")
+    async def add_process_time_header(request: Request, call_next):
+        start_time = time.time()
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        
+        # Log request
+        app.logger.info(
+            f"📡 {request.method} {request.url.path} - {response.status_code} "
+            f"({process_time:.3f}s)"
+        )
+        
+        response.headers["X-Process-Time"] = str(process_time)
+        return response
+    
+    # Include API routes
+    app.include_router(api_router, prefix="/api")
+    
+    # Health check endpoint
+    @app.get("/health")
+    async def health_check():
+        """Root health check endpoint"""
+        return {
+            "status": "healthy",
+            "service": "MaiChart Medical Transcription API",
+            "version": "2.0.0",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    
+    # Root endpoint
+    @app.get("/")
+    async def root():
+        """Root endpoint"""
+        return {
+            "message": "MaiChart Medical Voice Notes API",
+            "version": "2.0.0",
+            "docs": "/docs",
+            "health": "/health",
+            "api": "/api"
+        }
+    
     return app
 
 
-def setup_logging(app):
-    """Setup application logging"""
-
-    if not app.debug:
-        # Production logging
-        log_dir = app.config["LOGS_FOLDER"]
-        log_file = log_dir / "app.log"
-
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.INFO)
-        file_handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]"
-            )
+def setup_middleware(app: FastAPI, config_obj):
+    """Setup FastAPI middleware"""
+    
+    # CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:8000",
+            "http://127.0.0.1:8000"
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    
+    # Trusted host middleware (for production)
+    if not config_obj.DEBUG:
+        app.add_middleware(
+            TrustedHostMiddleware, 
+            allowed_hosts=["*"]  # Configure this properly in production
         )
 
-        app.logger.addHandler(file_handler)
-        app.logger.setLevel(logging.INFO)
-        app.logger.info("Audio Processing System startup")
 
-    # Console logging
+def setup_logging(app: FastAPI, config_obj):
+    """Setup application logging"""
+    
+    # Create logger
+    logger = logging.getLogger(__name__)
+    app.logger = logger
+    
+    # Console handler
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(
-        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    console_formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
+    console_handler.setFormatter(console_formatter)
+    
+    # File handler for production
+    if not config_obj.DEBUG:
+        log_dir = config_obj.LOGS_FOLDER
+        log_file = log_dir / "app.log"
+        
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.INFO)
+        file_formatter = logging.Formatter(
+            "%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]"
+        )
+        file_handler.setFormatter(file_formatter)
+        logger.addHandler(file_handler)
+    
+    logger.addHandler(console_handler)
+    logger.setLevel(logging.INFO)
+    
+    if not config_obj.DEBUG:
+        logger.info("🚀 FastAPI Medical Transcription System startup")
 
-    app.logger.addHandler(console_handler)
+
+# Create the app instance
+app = create_app()
 
 
 if __name__ == "__main__":
-    app = create_app()
-
-    app.logger.info("Starting Flask API server...")
-    app.logger.info(f"Upload folder: {app.config['UPLOAD_FOLDER']}")
-    app.logger.info(f"Transcripts folder: {app.config['TRANSCRIPTS_FOLDER']}")
-
-    # Run API server (no SSL needed for development with React)
-    app.logger.info("API server ready at: http://localhost:5001")
+    import uvicorn
     
-    app.run(
-        debug=app.config["DEBUG"],
-        host=app.config["HOST"],
-        port=app.config["PORT"],
-        use_reloader=False,
+    # Get configuration
+    config_name = os.getenv("FASTAPI_ENV", "default")
+    config_obj = config[config_name]
+    
+    print("🚀 Starting FastAPI Medical Transcription System...")
+    print(f"📁 Upload folder: {config_obj.UPLOAD_FOLDER}")
+    print(f"📄 Transcripts folder: {config_obj.TRANSCRIPTS_FOLDER}")
+    print(f"🔧 Environment: {config_name}")
+    print(f"🌐 Server will be available at: http://{config_obj.HOST}:{config_obj.PORT}")
+    
+    # Run with uvicorn
+    uvicorn.run(
+        "app:app",
+        host=config_obj.HOST,
+        port=config_obj.PORT,
+        reload=config_obj.DEBUG,
+        log_level="info"
     )
