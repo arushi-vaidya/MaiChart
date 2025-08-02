@@ -29,13 +29,14 @@ async def upload_audio(
     timestamp: Optional[str] = Form(None),
     config = Depends(get_config_dep)
 ):
-    """Upload audio file for processing"""
+    """Upload audio file for processing - FIXED"""
     try:
-        logger.info("Audio upload request received")
+        logger.info(f"Audio upload request received - File: {audio.filename}, Size: {audio.size}")
 
-        # Validate request
+        # FIXED: Enhanced validation with better error messages
         validation_result = await validate_upload_request(audio, config)
         if not validation_result["valid"]:
+            logger.error(f"Validation failed: {validation_result['error']}")
             raise HTTPException(status_code=400, detail=validation_result["error"])
 
         # Use provided timestamp or current time
@@ -45,16 +46,32 @@ async def upload_audio(
         # Initialize audio handler
         audio_handler = AudioHandler(config)
 
-        # Save file and queue for processing
-        result = await audio_handler.save_uploaded_file(audio, timestamp)
-
-        return JSONResponse(content={
-            "success": True,
-            "id": result["session_id"],
-            "filename": result["filename"],
-            "size": result["file_size"],
-            "message": "Audio uploaded successfully and queued for transcription",
-        })
+        # FIXED: Better error handling and logging
+        try:
+            # Save file and queue for processing
+            result = await audio_handler.save_uploaded_file(audio, timestamp)
+            
+            logger.info(f"✅ Upload successful - Session: {result['session_id']}")
+            
+            return JSONResponse(content={
+                "success": True,
+                "id": result["session_id"],
+                "filename": result["filename"],
+                "size": result["file_size"],
+                "duration": result.get("duration", 0),
+                "processing_strategy": result.get("processing_strategy", "direct"),
+                "message": "Audio uploaded successfully and queued for transcription",
+            })
+            
+        except FileNotFoundError as e:
+            logger.error(f"File not found after upload: {e}")
+            raise HTTPException(status_code=500, detail="File upload failed - file not found after saving")
+        except ValueError as e:
+            logger.error(f"File validation error: {e}")
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"Unexpected upload error: {e}")
+            raise HTTPException(status_code=500, detail=f"Upload processing failed: {str(e)}")
 
     except HTTPException:
         raise

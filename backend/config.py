@@ -29,10 +29,10 @@ class Config:
     ALLOWED_EXTENSIONS = set(os.environ.get("ALLOWED_EXTENSIONS", "webm,wav,mp3,ogg,m4a,flac").split(","))
 
     # AUDIO CHUNKING SETTINGS
-    CHUNK_DURATION = 120  # 2 minutes per chunk (in seconds)
-    CHUNK_OVERLAP = 5  # 5 seconds overlap between chunks
-    MAX_CHUNK_SIZE = 25 * 1024 * 1024  # 25MB max chunk size
-
+    CHUNK_DURATION = 180  # 3 minutes per chunk  
+    CHUNK_OVERLAP = 10   # 10 seconds overlap
+    MAX_CHUNK_SIZE = 10 * 1024 * 1024  # 10MB max chunk size
+    
     # REAL-TIME PROCESSING
     ENABLE_STREAMING = True
     STREAMING_CHUNK_SIZE = 10  # 10 seconds for real-time chunks
@@ -45,14 +45,14 @@ class Config:
     CHUNK_CONSUMER_GROUP = "chunk_processors"
 
     # Worker settings - ENHANCED
-    WORKER_TIMEOUT = 1800  # 30 minutes
-    CHUNK_WORKER_TIMEOUT = 300  # 5 minutes per chunk
+    WORKER_TIMEOUT = 3600  # 60 minutes
+    CHUNK_WORKER_TIMEOUT = 120  # 2 minutes per chunk
     WORKER_BLOCK_TIME = 1000
     SESSION_EXPIRE_TIME = 14400  # 4 hours
 
     # PARALLEL PROCESSING
-    MAX_PARALLEL_CHUNKS = 5  # Process 5 chunks simultaneously
-    MAX_WORKERS_PER_SESSION = 3  # Max workers per session
+    MAX_PARALLEL_CHUNKS = 10  # Process 10 chunks simultaneously
+    MAX_WORKERS_PER_SESSION = 8  # Max workers per session
 
     # REDIS CACHING
     CACHE_EXPIRE_TIME = 3600  # 1 hour cache

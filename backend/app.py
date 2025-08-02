@@ -80,7 +80,7 @@ def create_app(config_name=None):
         process_time = time.time() - start_time
         
         # Log request
-        app.logger.info(
+        app.logger.info( 
             f"📡 {request.method} {request.url.path} - {response.status_code} "
             f"({process_time:.3f}s)"
         )
@@ -147,7 +147,7 @@ def setup_logging(app: FastAPI, config_obj):
     
     # Create logger
     logger = logging.getLogger(__name__)
-    app.logger = logger
+    app.logger = logger 
     
     # Console handler
     console_handler = logging.StreamHandler()

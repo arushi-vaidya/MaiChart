@@ -114,10 +114,19 @@ class RedisClient:
     def set_session_status(
         self, session_id: str, status_data: Dict[str, Any], expire_seconds: int = 3600
     ):
-        """Set session status data"""
+        """Set session status data - FIXED"""
         try:
             key = f"session_status:{session_id}"
-            self.client.hset(key, mapping=status_data)
+            
+            # FIXED: Ensure all values are strings for Redis
+            string_data = {}
+            for k, v in status_data.items():
+                if isinstance(v, (dict, list)):
+                    string_data[k] = json.dumps(v)
+                else:
+                    string_data[k] = str(v)
+            
+            self.client.hset(key, mapping=string_data)
             self.client.expire(key, expire_seconds)
             logger.debug(f"Set status for session {session_id}")
         except Exception as e:
@@ -125,7 +134,7 @@ class RedisClient:
             raise
 
     def get_session_status(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Get session status data"""
+        """Get session status data - FIXED"""
         try:
             key = f"session_status:{session_id}"
             data = self.client.hgetall(key)
@@ -137,8 +146,16 @@ class RedisClient:
             result = {}
             for k, v in data.items():
                 try:
-                    # Try to parse as JSON first
-                    result[k] = json.loads(v)
+                    # FIXED: Handle different data types properly
+                    if isinstance(v, str):
+                        # Try to parse as JSON if it's a string
+                        result[k] = json.loads(v)
+                    elif isinstance(v, (list, dict)):
+                        # Already parsed, use as-is
+                        result[k] = v
+                    else:
+                        # Keep as original type
+                        result[k] = v
                 except (json.JSONDecodeError, TypeError):
                     # Keep as string if not JSON
                     result[k] = v

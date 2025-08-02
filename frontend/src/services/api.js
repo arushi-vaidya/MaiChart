@@ -80,8 +80,8 @@ class ApiService {
 
       // Start upload with proper headers
       xhr.open('POST', `${API_BASE_URL}/upload_audio`);
-      xhr.timeout = 300000; // 5 minutes timeout
-      
+      xhr.timeout = 600000; // 10 minutes timeout
+
       // Don't set Content-Type header - let browser set it with boundary for multipart/form-data
       
       console.log('Starting upload to:', `${API_BASE_URL}/upload_audio`);

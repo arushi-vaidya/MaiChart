@@ -54,14 +54,54 @@ class AudioHandler:
             filepath = self.config.UPLOAD_FOLDER / filename
 
             # Save file asynchronously
+            # FIXED: Ensure upload directory exists
+            self.config.UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+
+            # FIXED: Save file asynchronously with proper error handling
             logger.info(f"💾 Saving uploaded file: {filepath}")
-            
-            async with aiofiles.open(filepath, 'wb') as f:
-                content = await file.read()
-                await f.write(content)
+
+            file_size = 0
+            try:
+                # Reset file pointer to beginning
+                await file.seek(0)
+                
+                async with aiofiles.open(filepath, 'wb') as f:
+                    # Read file content
+                    content = await file.read()
+                    if not content:
+                        raise ValueError("Uploaded file is empty")
+                    
+                    # Write content to file
+                    await f.write(content)
+                    file_size = len(content)
+                    
+                logger.info(f"✅ File saved successfully: {filepath} ({file_size} bytes)")
+                
+                # FIXED: Verify file was actually saved
+                if not filepath.exists():
+                    raise FileNotFoundError(f"File was not saved properly: {filepath}")
+                    
+                # Double-check file size
+                actual_file_size = filepath.stat().st_size
+                if actual_file_size == 0:
+                    raise ValueError("Saved file is empty")
+                    
+                if actual_file_size != file_size:
+                    logger.warning(f"File size mismatch: expected {file_size}, got {actual_file_size}")
+                    file_size = actual_file_size
+                    
+            except Exception as e:
+                logger.error(f"❌ Error saving file: {e}")
+                # Clean up partial file if it exists
+                if filepath.exists():
+                    try:
+                        filepath.unlink()
+                    except:
+                        pass
+                raise ValueError(f"Failed to save uploaded file: {e}")
 
             # Get file info
-            file_size = filepath.stat().st_size
+            file_size = actual_file_size  # Use the verified file size from above
             duration = self.chunker.get_audio_duration(str(filepath))
 
             logger.info(
@@ -69,18 +109,13 @@ class AudioHandler:
             )
 
             # Decide processing strategy based on file characteristics
-            if self.chunker.should_chunk_audio(
-                str(filepath), self.config.CHUNK_DURATION
-            ):
+            # Decide processing strategy based on file characteristics
+            if self.chunker.should_chunk_audio(str(filepath), self.config.CHUNK_DURATION):
                 logger.info("🚛 Large file detected - using chunked processing")
-                return self._process_chunked_audio(
-                    session_id, filename, str(filepath), file_size, timestamp, duration
-                )
+                return self._process_chunked_audio(...)
             else:
-                logger.info("🚗 Small file detected - using direct processing")
-                return self._process_direct_audio(
-                    session_id, filename, str(filepath), file_size, timestamp, duration
-                )
+                logger.info("🚗 Small file detected - using direct processing") 
+                return self._process_direct_audio(...)
 
         except Exception as e:
             logger.error(f"❌ Error saving uploaded file: {e}")
@@ -90,11 +125,13 @@ class AudioHandler:
         self, session_id, filename, filepath, file_size, timestamp, duration
     ):
         """Process large audio files using chunking strategy"""
+        # FIXED: Verify file exists before chunking
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Audio file not found for chunking: {filepath}")
         try:
             # Create chunks
             logger.info(f"✂️ Creating chunks for session {session_id}")
             chunks_info = self.chunker.create_chunks(filepath, session_id)
-
             if not chunks_info:
                 raise Exception("Failed to create audio chunks")
 
@@ -156,6 +193,9 @@ class AudioHandler:
         self, session_id, filename, filepath, file_size, timestamp, duration
     ):
         """Process small audio files directly (original method)"""
+        # FIXED: Verify file exists before queuing
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Audio file not found for direct processing: {filepath}")
         try:
             # Queue for direct processing
             stream_id = self.queue_for_processing(
@@ -317,9 +357,13 @@ class AudioHandler:
             processing_chunks = 0
             failed_chunks = 0
 
-            # Get chunks info
             chunks_info_json = status_data.get("chunks_info", "[]")
-            chunks_info = json.loads(chunks_info_json) if chunks_info_json else []
+            if isinstance(chunks_info_json, str):
+                chunks_info = json.loads(chunks_info_json) if chunks_info_json else []
+            elif isinstance(chunks_info_json, list):
+                chunks_info = chunks_info_json
+            else:
+                chunks_info = []
 
             for chunk_info in chunks_info:
                 chunk_id = chunk_info["chunk_id"]
@@ -434,7 +478,13 @@ class AudioHandler:
         """Merge results from completed chunks"""
         try:
             chunks_info_json = status_data.get("chunks_info", "[]")
-            chunks_info = json.loads(chunks_info_json) if chunks_info_json else []
+            # FIXED: Handle both string and already-parsed list
+            if isinstance(chunks_info_json, str):
+                chunks_info = json.loads(chunks_info_json) if chunks_info_json else []
+            elif isinstance(chunks_info_json, list):
+                chunks_info = chunks_info_json
+            else:
+                chunks_info = []
 
             # Get completed chunk results
             chunk_results = []

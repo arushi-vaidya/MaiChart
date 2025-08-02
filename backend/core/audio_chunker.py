@@ -73,8 +73,9 @@ class AudioChunker:
         duration = self.get_audio_duration(audio_path)
         file_size = os.path.getsize(audio_path)
 
-        # Chunk if duration > threshold OR file size > 50MB
-        should_chunk = duration > max_duration or file_size > (50 * 1024 * 1024)
+        # OPTIMIZED: Chunk anything longer than 60 seconds or larger than 15MB
+        should_chunk = duration > 300 or file_size > (50 * 1024 * 1024)  # 5 minutes OR 50MB
+
 
         logger.info(
             f"🤔 Should chunk? {should_chunk} (duration: {duration:.1f}s, size: {file_size / (1024 * 1024):.1f}MB)"

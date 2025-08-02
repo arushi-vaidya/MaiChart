@@ -167,17 +167,7 @@ class EnhancedTranscriptionWorker(BaseWorker):
     def run(self):
         """Enhanced run method with completion checker for chunk workers"""
         try:
-            # Start completion checker for chunk workers
-            if self.worker_type == "chunk":
-                self.start_completion_checker()
-
-            # Call parent run method
             result = super().run()
-
-            # Stop completion checker
-            if self.worker_type == "chunk":
-                self.stop_completion_checker()
-
             return result
 
         except Exception as e:
