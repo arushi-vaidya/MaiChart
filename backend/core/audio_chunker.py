@@ -58,7 +58,11 @@ class AudioChunker:
                 audio_path,
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            duration = float(result.stdout.strip())
+            try:
+                duration = float(result.stdout.strip())
+            except ValueError:
+                logger.error(f"❌ Invalid audio duration value: {result.stdout.strip()}")
+                duration = 0.0
             logger.info(f"📏 Audio duration: {duration:.2f} seconds")
             return duration
         except Exception as e:

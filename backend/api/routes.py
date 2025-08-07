@@ -443,6 +443,3 @@ async def export_notes(request: Request, config = Depends(get_config_dep)):
     except Exception as e:
         logger.error(f"Error exporting notes: {str(e)}")
         raise HTTPException(status_code=500, detail="Export failed")
-
-
-# Error handlers would be handled by FastAPI's built-in exception handling

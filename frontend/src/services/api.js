@@ -1,7 +1,7 @@
 // API base URL - using proxy in package.json for development
 const API_BASE_URL = '/api';
 
-// API service class to handle all backend communication
+// API service class to handle all backend communication including medical extraction
 class ApiService {
   // Upload audio file for transcription - FIXED VERSION
   async uploadAudio(file, onProgress = null) {
@@ -125,6 +125,103 @@ class ApiService {
     }
   }
 
+  // NEW: Get medical data for a session
+  async getMedicalData(sessionId) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/medical_data/${sessionId}`);
+      console.log('Medical data response:', response.status);
+      
+      if (response.status === 404) {
+        // Medical data not found - this is normal if extraction hasn't completed yet
+        return null;
+      }
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Medical data error response:', errorText);
+        throw new Error(`Medical data retrieval failed: ${response.status}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.error('Medical data retrieval error:', error);
+      // Don't throw for medical data - it's optional
+      return null;
+    }
+  }
+
+  // NEW: Get medical summary for a session
+  async getMedicalSummary(sessionId) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/medical_summary/${sessionId}`);
+      if (response.status === 404) {
+        return null;
+      }
+      if (!response.ok) {
+        throw new Error(`Medical summary retrieval failed: ${response.status}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.error('Medical summary retrieval error:', error);
+      return null;
+    }
+  }
+
+  // NEW: Get medical alerts for a session
+  async getMedicalAlerts(sessionId) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/medical_alerts/${sessionId}`);
+      if (response.status === 404) {
+        return null;
+      }
+      if (!response.ok) {
+        throw new Error(`Medical alerts retrieval failed: ${response.status}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.error('Medical alerts retrieval error:', error);
+      return null;
+    }
+  }
+
+  // NEW: Download medical data as JSON
+  async downloadMedicalData(sessionId) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/medical_data/${sessionId}/download`);
+      if (!response.ok) {
+        throw new Error(`Medical data download failed: ${response.status}`);
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `medical_data_${sessionId.substring(0, 8)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Medical data download error:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Trigger medical extraction manually
+  async triggerMedicalExtraction(sessionId) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/trigger_medical_extraction/${sessionId}`, {
+        method: 'POST'
+      });
+      if (!response.ok) {
+        throw new Error(`Medical extraction trigger failed: ${response.status}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.error('Medical extraction trigger error:', error);
+      throw error;
+    }
+  }
+
   // Download transcript as file
   async downloadTranscript(sessionId) {
     try {
@@ -186,6 +283,20 @@ class ApiService {
       return response.json();
     } catch (error) {
       console.error('Get notes stats error:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Get medical extraction statistics
+  async getMedicalStats() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/medical_stats`);
+      if (!response.ok) {
+        throw new Error(`Medical stats retrieval failed: ${response.status}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.error('Get medical stats error:', error);
       throw error;
     }
   }

@@ -112,10 +112,10 @@ class AudioHandler:
             # Decide processing strategy based on file characteristics
             if self.chunker.should_chunk_audio(str(filepath), self.config.CHUNK_DURATION):
                 logger.info("🚛 Large file detected - using chunked processing")
-                return self._process_chunked_audio(...)
+                return self._process_chunked_audio(session_id, filename, filepath, file_size, timestamp, duration)
             else:
                 logger.info("🚗 Small file detected - using direct processing") 
-                return self._process_direct_audio(...)
+                return self._process_direct_audio(session_id, filename, filepath, file_size, timestamp, duration)
 
         except Exception as e:
             logger.error(f"❌ Error saving uploaded file: {e}")

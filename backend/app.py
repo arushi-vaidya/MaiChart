@@ -12,14 +12,22 @@ from config import config
 from api.routes import api_router
 from core.redis_client import RedisClient
 
+# Import medical extraction routes
+try:
+    from api.medical_routes import medical_router
+    MEDICAL_ROUTES_AVAILABLE = True
+except ImportError:
+    MEDICAL_ROUTES_AVAILABLE = False
+    medical_router = None
+
 
 # Async context manager for startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle application startup and shutdown"""
     # Startup
-    logger = logging.getLogger(__name__)
-    logger.info("Starting FastAPI Medical Transcription System...")
+    logger = getattr(app, "logger", logging.getLogger(__name__))
+    logger.info("Starting FastAPI Medical Transcription System with Enhanced Medical Extraction...")
     
     # Create necessary directories
     config_obj = config[os.getenv("FASTAPI_ENV", "default")]
@@ -39,6 +47,19 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ Redis connection failed: {e}")
         raise
     
+    # Initialize medical extraction models if enabled
+    enable_medical = os.getenv("ENABLE_MEDICAL_EXTRACTION", "true").lower() == "true"
+    if enable_medical and MEDICAL_ROUTES_AVAILABLE:
+        try:
+            from core.enhanced_medical_extraction_service import enhanced_medical_extractor
+            logger.info("🏥 Initializing medical extraction models...")
+            await enhanced_medical_extractor.initialize_models()
+            app.state.medical_extractor = enhanced_medical_extractor
+            logger.info("✅ Medical extraction models loaded")
+        except Exception as e:
+            logger.warning(f"⚠️ Medical extraction initialization failed: {e}")
+            logger.warning("Medical extraction features will be disabled")
+    
     yield
     
     # Shutdown
@@ -46,7 +67,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app(config_name=None):
-    """Application factory for FastAPI"""
+    """Application factory for FastAPI with medical extraction"""
     
     if config_name is None:
         config_name = os.environ.get("FASTAPI_ENV", "default")
@@ -55,9 +76,9 @@ def create_app(config_name=None):
     
     # Create FastAPI app with lifespan
     app = FastAPI(
-        title="MaiChart - Medical Voice Notes API",
-        description="AI-powered medical voice note transcription using AssemblyAI",
-        version="2.0.0",
+        title="MaiChart - Enhanced Medical Voice Notes API",
+        description="AI-powered medical voice note transcription with structured data extraction using OpenAI GPT-4 + BioBERT",
+        version="2.1.0",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan
@@ -91,27 +112,64 @@ def create_app(config_name=None):
     # Include API routes
     app.include_router(api_router, prefix="/api")
     
-    # Health check endpoint
+    # Include medical routes if available
+    if MEDICAL_ROUTES_AVAILABLE and medical_router:
+        app.include_router(medical_router, prefix="/api", tags=["medical"])
+        # Use logging module directly instead of undefined logger
+        logging.info("✅ Medical extraction routes enabled")
+    else:
+        # Use logging module directly instead of undefined logger
+        logging.warning("⚠️ Medical extraction routes not available")
+    
+    # Enhanced health check endpoint
     @app.get("/health")
     async def health_check():
-        """Root health check endpoint"""
+        """Root health check endpoint with medical extraction status"""
+        medical_status = "disabled"
+        if MEDICAL_ROUTES_AVAILABLE:
+            medical_status = "enabled" if os.getenv("ENABLE_MEDICAL_EXTRACTION", "true").lower() == "true" else "configured_but_disabled"
+        
         return {
             "status": "healthy",
             "service": "MaiChart Medical Transcription API",
-            "version": "2.0.0",
-            "timestamp": datetime.utcnow().isoformat()
+            "version": "2.1.0",
+            "timestamp": datetime.utcnow().isoformat(),
+            "features": {
+                "transcription": "enabled",
+                "medical_extraction": medical_status,
+                "parallel_chunking": "enabled",
+                "biobert_ner": medical_status,
+                "openai_gpt4": medical_status if os.getenv("OPENAI_API_KEY") else "no_api_key"
+            }
         }
     
     # Root endpoint
     @app.get("/")
     async def root():
-        """Root endpoint"""
+        """Root endpoint with feature overview"""
         return {
-            "message": "MaiChart Medical Voice Notes API",
-            "version": "2.0.0",
-            "docs": "/docs",
-            "health": "/health",
-            "api": "/api"
+            "message": "MaiChart Enhanced Medical Voice Notes API",
+            "version": "2.1.0",
+            "features": [
+                "🎤 Audio transcription with AssemblyAI",
+                "🏥 Medical information extraction with OpenAI GPT-4",
+                "🧬 Named entity recognition with BioBERT",
+                "⚡ Parallel chunk processing for large files",
+                "📊 Structured FHIR-like medical data output",
+                "🚨 Medical alerts and critical information detection"
+            ],
+            "endpoints": {
+                "docs": "/docs",
+                "health": "/health",
+                "transcription_api": "/api",
+                "medical_data_api": "/api/medical_data",
+                "upload": "/api/upload_audio",
+                "status": "/api/status/{session_id}",
+                "transcript": "/api/transcript/{session_id}",
+                "medical_data": "/api/medical_data/{session_id}",
+                "medical_summary": "/api/medical_summary/{session_id}",
+                "medical_alerts": "/api/medical_alerts/{session_id}"
+            }
         }
     
     return app
@@ -120,7 +178,7 @@ def create_app(config_name=None):
 def setup_middleware(app: FastAPI, config_obj):
     """Setup FastAPI middleware"""
     
-    # CORS middleware
+    # CORS middleware with medical API support
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -174,7 +232,7 @@ def setup_logging(app: FastAPI, config_obj):
     logger.setLevel(logging.INFO)
     
     if not config_obj.DEBUG:
-        logger.info("🚀 FastAPI Medical Transcription System startup")
+        logger.info("🚀 FastAPI Medical Transcription System with Medical Extraction startup")
 
 
 # Create the app instance
@@ -188,10 +246,12 @@ if __name__ == "__main__":
     config_name = os.getenv("FASTAPI_ENV", "default")
     config_obj = config[config_name]
     
-    print("🚀 Starting FastAPI Medical Transcription System...")
+    print("🚀 Starting Enhanced FastAPI Medical Transcription System...")
     print(f"📁 Upload folder: {config_obj.UPLOAD_FOLDER}")
     print(f"📄 Transcripts folder: {config_obj.TRANSCRIPTS_FOLDER}")
     print(f"🔧 Environment: {config_name}")
+    print(f"🏥 Medical extraction: {'Enabled' if os.getenv('ENABLE_MEDICAL_EXTRACTION', 'true').lower() == 'true' else 'Disabled'}")
+    print(f"🤖 OpenAI API: {'Configured' if os.getenv('OPENAI_API_KEY') else 'Not configured'}")
     print(f"🌐 Server will be available at: http://{config_obj.HOST}:{config_obj.PORT}")
     
     # Run with uvicorn
