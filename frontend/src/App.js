@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import AudioRecorder from './components/AudioRecorder';
 import NotesSection from './components/NotesSection';
+import MedicalSummariesSection from './components/MedicalSummariesSection';
 import TranscriptModal from './components/TranscriptModal';
 import './styles/App.css';
 
@@ -14,6 +15,10 @@ function App() {
 
   const showNotesSection = () => {
     setCurrentSection('notes');
+  };
+
+  const showSummariesSection = () => {
+    setCurrentSection('summaries');
   };
 
   const openTranscriptModal = (note) => {
@@ -38,7 +43,7 @@ function App() {
               showRecordingSection();
             }}
           >
-            Record
+            🎤 Record
           </a>
           <a 
             href="#notes" 
@@ -48,7 +53,17 @@ function App() {
               showNotesSection();
             }}
           >
-            Notes
+            📝 Transcripts
+          </a>
+          <a 
+            href="#summaries" 
+            className={`nav-link ${currentSection === 'summaries' ? 'active' : ''}`}
+            onClick={(e) => {
+              e.preventDefault();
+              showSummariesSection();
+            }}
+          >
+            🏥 Medical Summaries
           </a>
         </nav>
       </header>
@@ -56,12 +71,24 @@ function App() {
       {/* Main Container */}
       <div className="container">
         {currentSection === 'recording' && (
-          <AudioRecorder onShowNotes={showNotesSection} />
+          <AudioRecorder 
+            onShowNotes={showNotesSection} 
+            onShowSummaries={showSummariesSection}
+          />
         )}
         
         {currentSection === 'notes' && (
           <NotesSection 
             onShowRecording={showRecordingSection}
+            onOpenTranscript={openTranscriptModal}
+            onShowSummaries={showSummariesSection}
+          />
+        )}
+
+        {currentSection === 'summaries' && (
+          <MedicalSummariesSection 
+            onShowRecording={showRecordingSection}
+            onShowNotes={showNotesSection}
             onOpenTranscript={openTranscriptModal}
           />
         )}

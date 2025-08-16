@@ -1,6 +1,7 @@
 """
 Enhanced Medical Extraction Service
-OpenAI GPT-4 + BioBERT for Comprehensive Medical Information Extraction
+OpenAI GPT-4 Only for Comprehensive Medical Information Extraction
+FIXED: Removed BioBERT dependencies, OpenAI-only implementation
 """
 
 import json
@@ -19,35 +20,29 @@ except ImportError:
     OPENAI_AVAILABLE = False
     AsyncOpenAI = None
 
-from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
-
 logger = logging.getLogger(__name__)
 
 class EnhancedMedicalExtractionService:
     """
     Complete Medical Extraction Service
-    OpenAI GPT-4 + BioBERT for structured medical information extraction
+    OpenAI GPT-4 Only for structured medical information extraction
+    FIXED: Removed BioBERT dependencies and ensemble approach
     """
     
     def __init__(self):
         self.openai_client = None
-        self.biobert_ner = None
-        self.biobert_tokenizer = None
-        self.biobert_model = None
         self.is_loaded = False
         
         # Get API keys from environment
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.enable_extraction = os.getenv("ENABLE_MEDICAL_EXTRACTION", "true").lower() == "true"
-        self.biobert_model_name = os.getenv("BIOBERT_MODEL", "dmis-lab/biobert-base-cased-v1.2")
-        self.confidence_threshold = float(os.getenv("MEDICAL_EXTRACTION_CONFIDENCE_THRESHOLD", "0.7"))
         
         if not self.openai_api_key:
             logger.warning("⚠️ OPENAI_API_KEY not found. Medical extraction will be disabled.")
             self.enable_extraction = False
     
     async def initialize_models(self):
-        """Load OpenAI client and BioBERT models"""
+        """Load OpenAI client only"""
         try:
             if not self.enable_extraction:
                 logger.info("🚫 Medical extraction disabled")
@@ -60,21 +55,7 @@ class EnhancedMedicalExtractionService:
                 self.openai_client = AsyncOpenAI(api_key=self.openai_api_key)
                 logger.info("✅ OpenAI client initialized")
             
-            # Load BioBERT for Named Entity Recognition
-            logger.info("🧬 Loading BioBERT for medical NER...")
-            self.biobert_tokenizer = AutoTokenizer.from_pretrained(self.biobert_model_name)
-            self.biobert_model = AutoModelForTokenClassification.from_pretrained(self.biobert_model_name)
-            
-            # Create NER pipeline
-            self.biobert_ner = pipeline(
-                "ner",
-                model=self.biobert_model,
-                tokenizer=self.biobert_tokenizer,
-                aggregation_strategy="simple",
-                device=-1  # CPU only for stability
-            )
-            
-            logger.info("✅ BioBERT loaded successfully")
+            logger.info("✅ Medical extraction service loaded successfully")
             self.is_loaded = True
             
         except Exception as e:
@@ -198,103 +179,9 @@ Return ONLY the JSON structure, no additional text."""
             logger.error(f"❌ Error in OpenAI extraction: {e}")
             return self._create_empty_medical_structure()
     
-    async def extract_with_biobert(self, transcript: str) -> List[Dict]:
-        """Extract medical entities using BioBERT"""
-        try:
-            if not self.biobert_ner:
-                logger.warning("⚠️ BioBERT not available")
-                return []
-                
-            logger.info("🧬 Running BioBERT entity extraction...")
-            
-            # Process text with BioBERT NER
-            entities = self.biobert_ner(transcript)
-            
-            # Process and categorize entities
-            processed_entities = []
-            for entity in entities:
-                if entity["score"] >= self.confidence_threshold:
-                    processed_entities.append({
-                        "text": entity["word"],
-                        "label": entity["entity_group"],
-                        "confidence": entity["score"],
-                        "start": entity.get("start", 0),
-                        "end": entity.get("end", 0)
-                    })
-            
-            logger.info(f"✅ BioBERT found {len(processed_entities)} high-confidence entities")
-            return processed_entities
-            
-        except Exception as e:
-            logger.error(f"❌ Error in BioBERT extraction: {e}")
-            return []
-    
-    def enhance_with_biobert_entities(self, medical_data: Dict, biobert_entities: List[Dict]) -> Dict:
-        """Enhance OpenAI results with BioBERT entities"""
-        try:
-            # Group BioBERT entities by type
-            entity_groups = {}
-            for entity in biobert_entities:
-                label = entity["label"]
-                if label not in entity_groups:
-                    entity_groups[label] = []
-                entity_groups[label].append(entity)
-            
-            # Enhance symptoms with BioBERT findings
-            biobert_symptoms = []
-            for entity in entity_groups.get("SIGN_SYMPTOM", []):
-                if entity["confidence"] > 0.8:
-                    biobert_symptoms.append(entity["text"])
-            
-            # Merge with existing symptoms, avoid duplicates
-            existing_symptoms = set(s.lower() for s in medical_data.get("symptoms", []))
-            for symptom in biobert_symptoms:
-                if symptom.lower() not in existing_symptoms:
-                    medical_data["symptoms"].append(symptom)
-            
-            # Enhance drug history with BioBERT chemical entities
-            biobert_medications = []
-            for entity in entity_groups.get("CHEMICAL", []):
-                if entity["confidence"] > 0.75:
-                    biobert_medications.append(entity["text"])
-            
-            # Merge medications
-            existing_drugs = set(d.lower() for d in medical_data.get("drug_history", []))
-            for med in biobert_medications:
-                if med.lower() not in existing_drugs:
-                    medical_data["drug_history"].append(med)
-            
-            # Enhance possible diseases with BioBERT disease entities
-            biobert_diseases = []
-            for entity in entity_groups.get("DISEASE", []):
-                if entity["confidence"] > 0.8:
-                    biobert_diseases.append(entity["text"])
-            
-            # Merge diseases
-            existing_diseases = set(d.lower() for d in medical_data.get("possible_diseases", []))
-            for disease in biobert_diseases:
-                if disease.lower() not in existing_diseases:
-                    medical_data["possible_diseases"].append(disease)
-            
-            # Add BioBERT metadata
-            medical_data["biobert_enhancement"] = {
-                "entities_found": len(biobert_entities),
-                "symptoms_added": len([e for e in entity_groups.get("SIGN_SYMPTOM", []) if e["confidence"] > 0.8]),
-                "medications_added": len([e for e in entity_groups.get("CHEMICAL", []) if e["confidence"] > 0.75]),
-                "diseases_added": len([e for e in entity_groups.get("DISEASE", []) if e["confidence"] > 0.8]),
-                "confidence_threshold": self.confidence_threshold
-            }
-            
-            logger.info("✅ Enhanced medical data with BioBERT entities")
-            return medical_data
-            
-        except Exception as e:
-            logger.error(f"❌ Error enhancing with BioBERT: {e}")
-            return medical_data
-    
     async def extract_medical_information(self, transcript: str) -> Dict:
         """
-        Main extraction method - OpenAI + BioBERT ensemble
+        Main extraction method - OpenAI only (BioBERT removed)
         """
         if not self.is_loaded:
             await self.initialize_models()
@@ -304,33 +191,24 @@ Return ONLY the JSON structure, no additional text."""
             return self._create_empty_medical_structure()
         
         try:
-            logger.info("🔄 Starting comprehensive medical information extraction...")
+            logger.info("🔄 Starting medical information extraction...")
             start_time = datetime.utcnow()
             
-            # Run OpenAI and BioBERT in parallel
-            openai_task = self.extract_with_openai(transcript)
-            biobert_task = self.extract_with_biobert(transcript)
-            
-            medical_data, biobert_entities = await asyncio.gather(openai_task, biobert_task)
-            
-            # Enhance OpenAI results with BioBERT entities
-            enhanced_data = self.enhance_with_biobert_entities(medical_data, biobert_entities)
+            # Run OpenAI extraction only
+            medical_data = await self.extract_with_openai(transcript)
             
             # Add extraction metadata
             processing_time = (datetime.utcnow() - start_time).total_seconds()
-            enhanced_data["extraction_metadata"] = {
+            medical_data["extraction_metadata"] = {
                 "timestamp": datetime.utcnow().isoformat(),
-                "method": "OpenAI GPT-4 + BioBERT Ensemble",
+                "method": "OpenAI GPT-4 Only",
                 "processing_time_seconds": round(processing_time, 2),
                 "openai_model": "gpt-4",
-                "biobert_model": self.biobert_model_name,
-                "biobert_entities_found": len(biobert_entities),
-                "confidence_threshold": self.confidence_threshold,
                 "extraction_enabled": self.enable_extraction
             }
             
             logger.info(f"✅ Medical extraction completed in {processing_time:.2f}s")
-            return enhanced_data
+            return medical_data
             
         except Exception as e:
             logger.error(f"❌ Error in medical extraction: {e}")
@@ -358,7 +236,7 @@ Return ONLY the JSON structure, no additional text."""
             "possible_diseases": [],
             "extraction_metadata": {
                 "timestamp": datetime.utcnow().isoformat(),
-                "method": "OpenAI GPT-4 + BioBERT Ensemble",
+                "method": "OpenAI GPT-4 Only",
                 "status": "failed or disabled",
                 "extraction_enabled": self.enable_extraction
             }

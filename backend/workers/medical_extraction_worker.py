@@ -2,6 +2,7 @@
 """
 Medical Extraction Worker
 Processes completed transcripts to extract structured medical information
+FIXED: Removed BioBERT dependencies, OpenAI-only implementation
 """
 
 import os
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 class MedicalExtractionWorker(BaseWorker):
     """
     Worker that processes completed transcripts for medical information extraction
+    FIXED: Removed BioBERT dependencies, simplified to OpenAI-only
     """
 
     def __init__(self, config_name="default"):
@@ -46,9 +48,10 @@ class MedicalExtractionWorker(BaseWorker):
         if not self.enable_extraction:
             logger.warning("⚠️ Medical extraction disabled")
         elif not self.openai_api_key:
-            logger.warning("⚠️ OpenAI API key not found. Medical extraction will be limited.")
+            logger.warning("⚠️ OpenAI API key not found. Medical extraction will be disabled.")
+            self.enable_extraction = False
         
-        logger.info(f"✅ Medical extraction worker initialized")
+        logger.info(f"✅ Medical extraction worker initialized (OpenAI GPT-4 only)")
 
     def check_dependencies(self) -> bool:
         """Check if medical extraction dependencies are available"""
@@ -62,15 +65,7 @@ class MedicalExtractionWorker(BaseWorker):
             # Check OpenAI API key
             if not self.openai_api_key:
                 logger.warning("⚠️ OpenAI API key not found")
-                return True  # Can still run with BioBERT only
-            
-            # Check if transformers is available
-            try:
-                import transformers
-                logger.info("✅ Transformers library available")
-            except ImportError:
-                logger.error("❌ Transformers library not installed")
-                return False
+                return True  # Can still run but won't process
             
             # Check if OpenAI library is available
             try:

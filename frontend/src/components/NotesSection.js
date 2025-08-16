@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import apiService from '../services/api';
 
-const NotesSection = ({ onShowRecording, onOpenTranscript }) => {
+const NotesSection = ({ onShowRecording, onOpenTranscript, onShowSummaries }) => {
   const [notes, setNotes] = useState([]);
   const [filteredNotes, setFilteredNotes] = useState([]);
   const [loading, setLoading] = useState(true);

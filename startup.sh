@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # MaiChart Enhanced Medical Transcription System Startup Script
-# This script helps you run the complete system with medical extraction
+# FIXED: Includes Redis cleanup and better error handling
 
 echo "🚀 Starting MaiChart Enhanced Medical Transcription System..."
-echo "🏥 With OpenAI GPT-4 + BioBERT Medical Information Extraction"
+echo "🏥 With OpenAI GPT-4 Medical Information Extraction (BioBERT removed)"
 echo "=================================================="
 
 # Function to check if a command exists
@@ -47,11 +47,15 @@ fi
 
 # Check if ports are available
 if port_in_use 5001; then
-    echo "⚠️ Port 5001 is already in use. Backend may already be running."
+    echo "⚠️ Port 5001 is already in use. Stopping existing backend..."
+    lsof -ti :5001 | xargs kill -9 2>/dev/null || true
+    sleep 2
 fi
 
 if port_in_use 3000; then
-    echo "⚠️ Port 3000 is already in use. Frontend may already be running."
+    echo "⚠️ Port 3000 is already in use. Stopping existing frontend..."
+    lsof -ti :3000 | xargs kill -9 2>/dev/null || true
+    sleep 2
 fi
 
 # Check environment file
@@ -77,6 +81,11 @@ if [ -z "$OPENAI_API_KEY" ]; then
     echo "⚠️ OPENAI_API_KEY not found. Medical extraction will be limited."
 fi
 
+if [ -z "$REDIS_HOST" ]; then
+    echo "❌ REDIS_HOST is required in .env file"
+    exit 1
+fi
+
 echo "✅ Prerequisites check passed"
 echo ""
 
@@ -99,6 +108,10 @@ pip install -r requirements.txt
 
 # Create necessary directories
 mkdir -p uploads transcripts chunks logs
+
+# FIXED: Clean up Redis queues before starting
+echo "🧹 Cleaning up Redis queues..."
+python redis_cleanup.py --action cleanup
 
 echo "✅ Backend setup complete"
 echo ""
@@ -123,8 +136,35 @@ cd ..
 # Create logs directory
 mkdir -p logs
 
+# Function to cleanup on exit
+cleanup() {
+    echo "🛑 Stopping all services..."
+    jobs -p | xargs -r kill 2>/dev/null || true
+    
+    # Kill by PID files
+    for pidfile in *.pid; do
+        if [ -f "$pidfile" ]; then
+            pid=$(cat "$pidfile")
+            if kill -0 "$pid" 2>/dev/null; then
+                echo "🛑 Stopping service with PID $pid"
+                kill "$pid" 2>/dev/null || true
+            fi
+            rm -f "$pidfile"
+        fi
+    done
+    
+    # Kill processes on specific ports
+    lsof -ti :5001 | xargs kill -9 2>/dev/null || true
+    lsof -ti :3000 | xargs kill -9 2>/dev/null || true
+    
+    exit
+}
+
+# Setup cleanup on script exit
+trap cleanup EXIT INT TERM
+
 # Start FastAPI backend
-echo "🔧 Starting FastAPI backend server..."
+echo "🔧 Starting FastAPI backend..."
 cd backend
 source venv/bin/activate
 start_service "backend" "python app.py" "../logs/backend.log"
@@ -132,7 +172,18 @@ cd ..
 
 # Wait for backend to start
 echo "⏳ Waiting for backend to start..."
-sleep 10
+sleep 15
+
+# Test backend health
+echo "🔍 Testing backend health..."
+if curl -f http://localhost:5001/health > /dev/null 2>&1; then
+    echo "✅ Backend is healthy"
+else
+    echo "❌ Backend health check failed"
+    echo "📋 Backend logs:"
+    tail -20 logs/backend.log
+    exit 1
+fi
 
 # Start transcription workers
 echo "🤖 Starting transcription workers..."
@@ -152,7 +203,7 @@ cd ..
 
 # Wait for workers to start
 echo "⏳ Waiting for workers to initialize..."
-sleep 5
+sleep 10
 
 # Start React frontend
 echo "⚛️ Starting React frontend..."
@@ -160,28 +211,70 @@ cd frontend
 start_service "frontend" "npm start" "../logs/frontend.log"
 cd ..
 
+# Wait for frontend to start
+echo "⏳ Waiting for frontend to start..."
+sleep 15
+
+# Test frontend
+echo "🔍 Testing frontend..."
+if curl -f http://localhost:3000 > /dev/null 2>&1; then
+    echo "✅ Frontend is accessible"
+else
+    echo "⚠️ Frontend may still be starting..."
+fi
+
 echo ""
 echo "🎉 MaiChart Enhanced Medical Transcription System Started!"
 echo "=================================================="
 echo "🌐 Frontend: http://localhost:3000"
 echo "📡 Backend API: http://localhost:5001"
 echo "📚 API Docs: http://localhost:5001/docs"
-echo "🏥 Medical Features: Enabled"
+echo "🏥 Medical Features: Enabled (OpenAI GPT-4 only)"
 echo ""
 echo "📊 Service Status:"
 echo "• FastAPI Backend: http://localhost:5001/health"
 echo "• Transcription Workers: Processing audio files"
 echo "• Medical Extraction Worker: Processing completed transcripts"
+echo "• Redis Queues: Cleaned and ready"
 echo ""
 echo "📋 Available Features:"
 echo "• 🎤 Audio recording and file upload"
 echo "• 🤖 AI transcription with AssemblyAI"
 echo "• 🏥 Medical information extraction with OpenAI GPT-4"
-echo "• 🧬 Named entity recognition with BioBERT"
 echo "• 📊 Structured medical data output"
 echo "• 🚨 Medical alerts and critical information detection"
+echo "• 🔄 Fixed Redis queue handling (no more stuck uploads)"
 echo ""
 echo "📝 Log files are in the logs/ directory"
 echo "🛑 To stop all services, run: ./stop.sh"
+echo "🧹 To clean Redis queues manually, run: cd backend && python redis_cleanup.py"
 echo ""
 echo "⚡ System ready for medical voice note processing!"
+
+# Monitor services
+echo "🔍 Monitoring services (Ctrl+C to stop)..."
+while true; do
+    sleep 30
+    
+    # Check if all services are still running
+    services_running=0
+    
+    for pidfile in *.pid; do
+        if [ -f "$pidfile" ]; then
+            pid=$(cat "$pidfile")
+            if kill -0 "$pid" 2>/dev/null; then
+                services_running=$((services_running + 1))
+            else
+                echo "⚠️ Service with PID $pid has stopped"
+            fi
+        fi
+    done
+    
+    echo "📊 Services running: $services_running"
+    
+    # If no services are running, exit
+    if [ $services_running -eq 0 ]; then
+        echo "❌ All services have stopped"
+        break
+    fi
+done

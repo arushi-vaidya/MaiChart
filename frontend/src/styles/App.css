@@ -967,4 +967,413 @@ body {
     .medical-grid {
         grid-template-columns: 1fr;
     }
+
+    /* ===================================
+   MEDICAL SUMMARIES SECTION STYLES
+   =================================== */
+
+.summaries-section {
+    background: white;
+    border-radius: 16px;
+    padding: 2rem;
+    margin-top: 2rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.summaries-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    border-bottom: 2px solid #f1f5f9;
+    padding-bottom: 1rem;
+}
+
+.summaries-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #1f2937;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.summaries-controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.summaries-grid {
+    display: grid;
+    gap: 2rem;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    margin-bottom: 2rem;
+}
+
+/* Summary Card Styles */
+.summary-card {
+    background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+    border: 2px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.summary-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+    border-color: #3b82f6;
+}
+
+.summary-card.has-alerts {
+    border-left: 4px solid #ef4444;
+    background: linear-gradient(135deg, #fef2f2 0%, #ffffff 100%);
+}
+
+.summary-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.summary-patient {
+    flex: 1;
+}
+
+.patient-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0 0 0.25rem 0;
+}
+
+.patient-age {
+    font-size: 0.8rem;
+    color: #6b7280;
+    background: #f3f4f6;
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    display: inline-block;
+}
+
+.summary-date {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    margin-top: 0.25rem;
+}
+
+.summary-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Alerts Banner */
+.alerts-banner {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.alert-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.alert-badge.priority-critical {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+.alert-badge.priority-high {
+    background: #fffbeb;
+    color: #d97706;
+    border: 1px solid #fed7aa;
+}
+
+.alert-badge.priority-medium {
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+}
+
+.alert-badge.priority-low {
+    background: #f0fdf4;
+    color: #16a34a;
+    border: 1px solid #bbf7d0;
+}
+
+/* Medical Stats */
+.medical-stats {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.stat-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    color: #6b7280;
+    background: #f8fafc;
+    padding: 0.25rem 0.5rem;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+
+.stat-item.critical {
+    background: #fef2f2;
+    color: #991b1b;
+    border-color: #fecaca;
+    font-weight: 600;
+}
+
+.stat-icon {
+    font-size: 0.9rem;
+}
+
+/* Summary Details (Expanded) */
+.summary-details {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #f1f5f9;
+}
+
+.detail-section {
+    margin-bottom: 1rem;
+}
+
+.detail-section.critical {
+    background: #fef2f2;
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid #fecaca;
+}
+
+.detail-section h4 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.detail-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.detail-list li {
+    padding: 0.25rem 0.5rem;
+    margin-bottom: 0.25rem;
+    background: #f8fafc;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    border-left: 3px solid #e2e8f0;
+}
+
+.critical-list li {
+    background: #fef9f9;
+    border-left-color: #ef4444;
+}
+
+.critical-item {
+    font-weight: 600;
+    color: #991b1b;
+}
+
+/* Symptoms and Medications Grid */
+.symptoms-grid, .medications-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.symptom-tag, .medication-tag {
+    background: #eff6ff;
+    color: #1d4ed8;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    border: 1px solid #bfdbfe;
+}
+
+.medication-tag {
+    background: #f0fdf4;
+    color: #15803d;
+    border-color: #bbf7d0;
+}
+
+.symptom-tag.more {
+    background: #f3f4f6;
+    color: #6b7280;
+    border-color: #d1d5db;
+}
+
+/* Summary Footer */
+.summary-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #f1f5f9;
+    font-size: 0.75rem;
+    color: #9ca3af;
+}
+
+.session-id {
+    font-family: monospace;
+}
+
+.extraction-method {
+    background: #f3f4f6;
+    padding: 0.2rem 0.5rem;
+    border-radius: 8px;
+}
+
+/* Filter Chips for Summaries */
+.filter-chips .filter-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.filter-icon {
+    font-size: 0.8rem;
+}
+
+/* Stats Footer */
+.summaries-stats {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid #f1f5f9;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+}
+
+.stat-card {
+    background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+    padding: 1rem;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stat-number {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1f2937;
+    margin-bottom: 0.25rem;
+}
+
+.stat-label {
+    font-size: 0.8rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Enhanced Empty State for Summaries */
+.summaries-section .empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: #6b7280;
+}
+
+.summaries-section .empty-state-icon {
+    font-size: 4rem;
+    margin-bottom: 1.5rem;
+}
+
+.summaries-section .empty-state h3 {
+    font-size: 1.3rem;
+    color: #374151;
+    margin-bottom: 0.5rem;
+}
+
+.summaries-section .empty-state p {
+    max-width: 400px;
+    margin: 0 auto 2rem auto;
+    line-height: 1.6;
+}
+
+.empty-state-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+/* Responsive Design for Summaries */
+@media (max-width: 768px) {
+    .summaries-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .summaries-header {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: stretch;
+    }
+    
+    .summaries-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .summary-card {
+        padding: 1rem;
+    }
+    
+    .summary-header {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .medical-stats {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .symptoms-grid, .medications-grid {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    
+    .empty-state-actions {
+        flex-direction: column;
+        align-items: center;
+    }
+}
 }

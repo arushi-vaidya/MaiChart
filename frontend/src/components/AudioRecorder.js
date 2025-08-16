@@ -1,8 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import apiService from '../services/api';
 
-const AudioRecorder = ({ onShowNotes }) => {
-  // State management
+const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {  // State management
   const [isRecording, setIsRecording] = useState(false);
   const [timer, setTimer] = useState('00:00');
   const [status, setStatus] = useState({

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Enhanced Transcription Worker with Parallel Chunk Processing and Medical Extraction
-Updated to automatically queue completed transcripts for medical information extraction
+Enhanced Transcription Worker with Fixed Redis Queue Management
+Fixed: Proper message acknowledgment and consumer group handling
 """
 
 import os
@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 class EnhancedTranscriptionWorker(BaseWorker):
     """
     Enhanced worker that handles transcription and automatically queues for medical extraction
+    FIXED: Proper Redis message acknowledgment and state management
     """
 
     def __init__(self, config_name="default", worker_type="direct"):
@@ -287,21 +288,27 @@ class EnhancedTranscriptionWorker(BaseWorker):
             return ""
 
     def process_message(self, message_data: dict) -> bool:
-        """Enhanced process_message that handles both direct and chunk processing"""
+        """FIXED: Enhanced process_message with proper acknowledgment"""
+        message_id = None
         try:
             message_type = message_data.get("type", "direct_processing")
 
             if message_type == "chunk_processing":
-                return self._process_chunk_message(message_data)
+                result = self._process_chunk_message(message_data)
             else:
-                return self._process_direct_message(message_data)
+                result = self._process_direct_message(message_data)
+
+            # FIXED: Always return the result properly
+            return result
 
         except Exception as e:
             logger.error(f"❌ Error processing message: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             return False
 
     def _process_direct_message(self, message_data: dict) -> bool:
-        """Process a direct (non-chunked) transcription message with medical extraction"""
+        """FIXED: Process a direct (non-chunked) transcription message with proper error handling"""
         try:
             session_id = message_data.get("session_id")
             filepath = message_data.get("filepath")
@@ -412,7 +419,7 @@ class EnhancedTranscriptionWorker(BaseWorker):
             return False
 
     def _process_chunk_message(self, message_data: dict) -> bool:
-        """Process a chunk transcription message"""
+        """FIXED: Process a chunk transcription message with proper error handling"""
         try:
             session_id = message_data.get("session_id")
             chunk_id = message_data.get("chunk_id")
@@ -477,7 +484,12 @@ class EnhancedTranscriptionWorker(BaseWorker):
                 if transcript_result.get("warning"):
                     chunk_status["warning"] = transcript_result["warning"]
 
-                self.redis_client.client.hset(chunk_status_key, mapping=chunk_status)
+                # FIXED: Convert values to strings for Redis
+                string_chunk_status = {}
+                for k, v in chunk_status.items():
+                    string_chunk_status[k] = str(v)
+
+                self.redis_client.client.hset(chunk_status_key, mapping=string_chunk_status)
 
                 logger.info(f"✅ Chunk {chunk_id} transcribed successfully!")
                 logger.info(f"📊 Chunk stats: {len(transcript_result['text'])} chars, {transcript_result.get('words', 0)} words")
@@ -544,20 +556,90 @@ class EnhancedTranscriptionWorker(BaseWorker):
             logger.warning(f"⚠️ Error checking chunked medical extraction: {e}")
 
     def run(self):
-        """Enhanced run method with completion checker for chunk workers"""
+        """FIXED: Enhanced run method with proper message acknowledgment"""
         try:
             # Start completion checker for chunk workers
             if self.worker_type == "chunk":
                 self.start_completion_checker()
             
-            result = super().run()
-            return result
+            # FIXED: Override the base run method with proper acknowledgment
+            logger.info(f"Starting {self.worker_name}...")
+
+            # Check dependencies
+            if not self.check_dependencies():
+                logger.error("Dependency check failed. Exiting.")
+                return 1
+
+            # Main processing loop
+            while self.running:
+                try:
+                    # Read messages from Redis stream
+                    messages = self.redis_client.read_stream(
+                        self.stream_name,
+                        self.consumer_group,
+                        self.consumer_name,
+                        count=1,
+                        block=self.block_time,
+                    )
+
+                    if not messages:
+                        continue
+
+                    # Process each message
+                    for stream, stream_messages in messages:
+                        for message_id, fields in stream_messages:
+                            logger.info(f"Processing message {message_id}")
+
+                            try:
+                                # Process the message
+                                success = self.process_message(fields)
+
+                                # FIXED: Always acknowledge the message regardless of success
+                                # This prevents stuck messages in the queue
+                                self.redis_client.acknowledge_message(
+                                    self.stream_name, self.consumer_group, message_id
+                                )
+                                
+                                if success:
+                                    logger.info(f"✅ Message {message_id} processed successfully and acknowledged")
+                                else:
+                                    logger.error(f"❌ Message {message_id} failed but acknowledged to prevent queue blocking")
+
+                            except Exception as e:
+                                logger.error(f"❌ Error processing message {message_id}: {e}")
+
+                                # Try to update session status if we have session_id
+                                session_id = fields.get("session_id")
+                                if session_id:
+                                    self.handle_message_error(session_id, e)
+
+                                # FIXED: Still acknowledge the message to prevent queue blocking
+                                try:
+                                    self.redis_client.acknowledge_message(
+                                        self.stream_name, self.consumer_group, message_id
+                                    )
+                                    logger.info(f"❌ Failed message {message_id} acknowledged to prevent queue blocking")
+                                except Exception as ack_error:
+                                    logger.error(f"❌ Failed to acknowledge message {message_id}: {ack_error}")
+
+                except KeyboardInterrupt:
+                    logger.info("Received keyboard interrupt")
+                    break
+                except Exception as e:
+                    logger.error(f"❌ Error in worker loop: {e}")
+                    time.sleep(5)  # Wait before retrying
+
+            logger.info(f"{self.worker_name} stopped")
+            return 0
 
         except Exception as e:
             logger.error(f"❌ Error in enhanced worker run: {e}")
             if self.worker_type == "chunk":
                 self.stop_completion_checker()
             return 1
+        finally:
+            if self.worker_type == "chunk":
+                self.stop_completion_checker()
 
     def start_completion_checker(self):
         """Start background thread to check for completed chunked sessions"""
@@ -615,7 +697,7 @@ class EnhancedTranscriptionWorker(BaseWorker):
 
 
 def main():
-    """Enhanced main entry point with worker type selection"""
+    """FIXED: Enhanced main entry point with worker type selection"""
     try:
         # Get worker type from environment or command line
         worker_type = os.getenv("WORKER_TYPE", "direct")  # Default to direct

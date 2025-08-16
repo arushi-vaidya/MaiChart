@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
             logger.info("🏥 Initializing medical extraction models...")
             await enhanced_medical_extractor.initialize_models()
             app.state.medical_extractor = enhanced_medical_extractor
-            logger.info("✅ Medical extraction models loaded")
+            logger.info("✅ Medical extraction models loaded (OpenAI GPT-4 only)")
         except Exception as e:
             logger.warning(f"⚠️ Medical extraction initialization failed: {e}")
             logger.warning("Medical extraction features will be disabled")
@@ -77,7 +77,7 @@ def create_app(config_name=None):
     # Create FastAPI app with lifespan
     app = FastAPI(
         title="MaiChart - Enhanced Medical Voice Notes API",
-        description="AI-powered medical voice note transcription with structured data extraction using OpenAI GPT-4 + BioBERT",
+        description="AI-powered medical voice note transcription with structured data extraction using OpenAI GPT-4",
         version="2.1.0",
         docs_url="/docs",
         redoc_url="/redoc",
@@ -115,10 +115,8 @@ def create_app(config_name=None):
     # Include medical routes if available
     if MEDICAL_ROUTES_AVAILABLE and medical_router:
         app.include_router(medical_router, prefix="/api", tags=["medical"])
-        # Use logging module directly instead of undefined logger
         logging.info("✅ Medical extraction routes enabled")
     else:
-        # Use logging module directly instead of undefined logger
         logging.warning("⚠️ Medical extraction routes not available")
     
     # Enhanced health check endpoint
@@ -138,7 +136,6 @@ def create_app(config_name=None):
                 "transcription": "enabled",
                 "medical_extraction": medical_status,
                 "parallel_chunking": "enabled",
-                "biobert_ner": medical_status,
                 "openai_gpt4": medical_status if os.getenv("OPENAI_API_KEY") else "no_api_key"
             }
         }
@@ -153,7 +150,6 @@ def create_app(config_name=None):
             "features": [
                 "🎤 Audio transcription with AssemblyAI",
                 "🏥 Medical information extraction with OpenAI GPT-4",
-                "🧬 Named entity recognition with BioBERT",
                 "⚡ Parallel chunk processing for large files",
                 "📊 Structured FHIR-like medical data output",
                 "🚨 Medical alerts and critical information detection"
