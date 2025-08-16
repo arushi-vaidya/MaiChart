@@ -1,5 +1,4 @@
-# docker-compose.yml - FastAPI production setup with Medical Extraction (OpenAI only)
-version: '3.8'
+# Fixed docker-compose.yml - MaiChart Medical Transcription System
 services:
   # FastAPI Backend Server
   backend:
@@ -29,11 +28,18 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       # Medical extraction settings
       - ENABLE_MEDICAL_EXTRACTION=${ENABLE_MEDICAL_EXTRACTION:-true}
+      - ENABLE_BIOBERT=${ENABLE_BIOBERT:-false}
+      - USE_GPT4_MINI=${USE_GPT4_MINI:-true}
+      - BIOBERT_MODEL=${BIOBERT_MODEL:-dmis-lab/biobert-base-cased-v1.2}
+      - MEDICAL_EXTRACTION_CONFIDENCE_THRESHOLD=${MEDICAL_EXTRACTION_CONFIDENCE_THRESHOLD:-0.7}
       # Security
       - SECRET_KEY=${SECRET_KEY}
       # File settings
       - MAX_FILE_SIZE=${MAX_FILE_SIZE}
       - ALLOWED_EXTENSIONS=${ALLOWED_EXTENSIONS}
+      # Performance settings
+      - FORCE_CPU_ONLY=${FORCE_CPU_ONLY:-true}
+      - LOW_MEMORY_MODE=${LOW_MEMORY_MODE:-true}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
@@ -58,7 +64,7 @@ services:
     environment:
       - FASTAPI_ENV=production
       - WORKER_TYPE=direct
-      # Redis settings - from environment variables
+      # Redis settings
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
@@ -68,6 +74,8 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       # Medical extraction settings
       - ENABLE_MEDICAL_EXTRACTION=${ENABLE_MEDICAL_EXTRACTION:-true}
+      - ENABLE_BIOBERT=${ENABLE_BIOBERT:-false}
+      - USE_GPT4_MINI=${USE_GPT4_MINI:-true}
     command: python workers/transcription_worker.py direct
     restart: unless-stopped
     depends_on:
@@ -90,7 +98,7 @@ services:
     environment:
       - FASTAPI_ENV=production
       - WORKER_TYPE=chunk
-      # Redis settings - from environment variables
+      # Redis settings
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
@@ -100,6 +108,8 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       # Medical extraction settings
       - ENABLE_MEDICAL_EXTRACTION=${ENABLE_MEDICAL_EXTRACTION:-true}
+      - ENABLE_BIOBERT=${ENABLE_BIOBERT:-false}
+      - USE_GPT4_MINI=${USE_GPT4_MINI:-true}
     command: python workers/transcription_worker.py chunk
     restart: unless-stopped
     depends_on:
@@ -108,7 +118,7 @@ services:
     networks:
       - maichart_network
 
-  # Medical Extraction Worker (OpenAI only)
+  # Medical Extraction Worker
   medical_extraction_worker:
     build: 
       context: ./backend
@@ -122,15 +132,23 @@ services:
     environment:
       - FASTAPI_ENV=production
       - WORKER_TYPE=medical_extraction
-      # Redis settings - from environment variables
+      # Redis settings
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - REDIS_DB=${REDIS_DB}
       # API Keys
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN}
       # Medical extraction settings
       - ENABLE_MEDICAL_EXTRACTION=${ENABLE_MEDICAL_EXTRACTION:-true}
+      - ENABLE_BIOBERT=${ENABLE_BIOBERT:-false}
+      - USE_GPT4_MINI=${USE_GPT4_MINI:-true}
+      - BIOBERT_MODEL=${BIOBERT_MODEL:-dmis-lab/biobert-base-cased-v1.2}
+      - MEDICAL_EXTRACTION_CONFIDENCE_THRESHOLD=${MEDICAL_EXTRACTION_CONFIDENCE_THRESHOLD:-0.7}
+      # Performance settings
+      - FORCE_CPU_ONLY=${FORCE_CPU_ONLY:-true}
+      - LOW_MEMORY_MODE=${LOW_MEMORY_MODE:-true}
     command: python workers/medical_extraction_worker.py
     restart: unless-stopped
     depends_on:

@@ -251,31 +251,3 @@ async def extract_structured_medical_data(transcript: str) -> Dict:
     Easy-to-use function for comprehensive medical information extraction
     """
     return await enhanced_medical_extractor.extract_medical_information(transcript)
-
-if __name__ == "__main__":
-    import asyncio
-    
-    async def test_extraction():
-        print("🧪 Testing Enhanced Medical Extraction Service...")
-        
-        test_transcript = """
-        Patient: John Smith, 45-year-old married male from Chicago, presents with severe chest pain for the past 2 hours.
-        Pain is located in the center of the chest, radiating to left arm, severity 8/10.
-        Past history: Hypertension for 5 years, appendectomy in 2010.
-        Current medications: Lisinopril 10mg daily, Metformin 500mg twice daily.
-        Family history: Father had myocardial infarction at age 55, mother has diabetes.
-        Social history: Smokes 1 pack per day for 20 years, drinks alcohol occasionally.
-        Allergies: Penicillin causes rash.
-        Physical exam: Blood pressure 160/95, heart rate 110, diaphoretic, anxious.
-        Assessment: Possible acute coronary syndrome versus unstable angina.
-        """
-        
-        try:
-            result = await extract_structured_medical_data(test_transcript)
-            print("✅ Extraction successful!")
-            print(json.dumps(result, indent=2))
-        except Exception as e:
-            print(f"❌ Error: {e}")
-    
-    # Run the test
-    asyncio.run(test_extraction())

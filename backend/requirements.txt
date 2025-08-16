@@ -5,6 +5,7 @@ uvicorn[standard]==0.24.0
 # File handling
 aiofiles==23.2.1
 python-multipart==0.0.6
+dotenv
 
 # Original dependencies
 redis==5.0.1
