@@ -20,7 +20,7 @@ load_dotenv()
 sys.path.append(str(Path(__file__).parent.parent))
 
 from workers.base_worker import BaseWorker
-from workers.medical_extraction_worker import queue_for_medical_extraction
+from workers.enhanced_medical_extraction_worker import queue_for_medical_extraction
 
 # Import AssemblyAI
 try:

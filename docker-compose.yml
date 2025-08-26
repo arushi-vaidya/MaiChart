@@ -1,4 +1,4 @@
-# docker-compose.yml - FIXED with correct worker commands
+# docker-compose.yml - FIXED MongoDB auth and worker issues
 version: '3.8'
 
 services:
@@ -11,7 +11,7 @@ services:
       - "27017:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: MaiChart2025MongoDB!@#SecurePass
+      MONGO_INITDB_ROOT_PASSWORD: maichart_secure_2025
       MONGO_INITDB_DATABASE: maichart_medical
     volumes:
       - mongodb_data:/data/db
@@ -50,9 +50,9 @@ services:
       - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
       - REDIS_DB=0
       
-      # MongoDB settings - FIXED URL encoding
+      # MongoDB settings - FIXED: Simple password
       - ENABLE_MONGODB=true
-      - MONGODB_CONNECTION_STRING=mongodb://admin:MaiChart2025MongoDB%21%40%23SecurePass@mongodb:27017/maichart_medical?authSource=admin
+      - MONGODB_CONNECTION_STRING=mongodb://admin:maichart_secure_2025@mongodb:27017/maichart_medical?authSource=admin
       - MONGODB_DATABASE_NAME=maichart_medical
       - STORAGE_STRATEGY=hybrid
       - ENABLE_MEDICAL_ANALYTICS=true
@@ -66,7 +66,7 @@ services:
       - USE_GPT4_MINI=true
       
       # Security
-      - SECRET_KEY=MaiChart2025SecureDevelopmentKey!@#$%^&*ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefg
+      - SECRET_KEY=MaiChart2025SecureDevelopmentKey
       
       # File settings
       - MAX_FILE_SIZE=524288000
@@ -80,95 +80,11 @@ services:
       interval: 30s
       timeout: 30s
       retries: 5
-      start_period: 300s
+      start_period: 60s
     networks:
       - maichart_network
 
-  # Direct Transcription Worker
-  transcription_worker_direct:
-    build: 
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: maichart_transcription_worker_direct
-    volumes:
-      - "./backend/uploads:/app/uploads"
-      - "./backend/transcripts:/app/transcripts"
-      - "./backend/chunks:/app/chunks"
-      - "./backend/logs:/app/logs"
-    environment:
-      - FASTAPI_ENV=production
-      - WORKER_TYPE=direct
-      
-      # Redis settings
-      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
-      - REDIS_PORT=12617
-      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
-      - REDIS_DB=0
-      
-      # MongoDB settings
-      - ENABLE_MONGODB=true
-      - MONGODB_CONNECTION_STRING=mongodb://admin:MaiChart2025MongoDB%21%40%23SecurePass@mongodb:27017/maichart_medical?authSource=admin
-      - MONGODB_DATABASE_NAME=maichart_medical
-      
-      # API Keys
-      - ASSEMBLYAI_API_KEY=d8a38013ebce49d88d0579ce2d28d0d2
-      - OPENAI_API_KEY=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
-      
-      # Medical extraction settings
-      - ENABLE_MEDICAL_EXTRACTION=true
-    command: python workers/transcription_worker.py direct
-    restart: unless-stopped
-    depends_on:
-      backend:
-        condition: service_healthy
-      mongodb:
-        condition: service_healthy
-    networks:
-      - maichart_network
-
-  # Chunk Transcription Worker
-  transcription_worker_chunk:
-    build: 
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: maichart_transcription_worker_chunk
-    volumes:
-      - "./backend/uploads:/app/uploads"
-      - "./backend/transcripts:/app/transcripts"
-      - "./backend/chunks:/app/chunks"
-      - "./backend/logs:/app/logs"
-    environment:
-      - FASTAPI_ENV=production
-      - WORKER_TYPE=chunk
-      
-      # Redis settings
-      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
-      - REDIS_PORT=12617
-      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
-      - REDIS_DB=0
-      
-      # MongoDB settings
-      - ENABLE_MONGODB=true
-      - MONGODB_CONNECTION_STRING=mongodb://admin:MaiChart2025MongoDB%21%40%23SecurePass@mongodb:27017/maichart_medical?authSource=admin
-      - MONGODB_DATABASE_NAME=maichart_medical
-      
-      # API Keys
-      - ASSEMBLYAI_API_KEY=d8a38013ebce49d88d0579ce2d28d0d2
-      - OPENAI_API_KEY=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
-      
-      # Medical extraction settings
-      - ENABLE_MEDICAL_EXTRACTION=true
-    command: python workers/transcription_worker.py chunk
-    restart: unless-stopped
-    depends_on:
-      backend:
-        condition: service_healthy
-      mongodb:
-        condition: service_healthy
-    networks:
-      - maichart_network
-
-  # Enhanced Medical Extraction Worker with MongoDB - FIXED COMMAND
+  # Enhanced Medical Extraction Worker with MongoDB
   medical_extraction_worker:
     build: 
       context: ./backend
@@ -191,7 +107,7 @@ services:
       
       # MongoDB settings - FIXED
       - ENABLE_MONGODB=true
-      - MONGODB_CONNECTION_STRING=mongodb://admin:MaiChart2025MongoDB%21%40%23SecurePass@mongodb:27017/maichart_medical?authSource=admin
+      - MONGODB_CONNECTION_STRING=mongodb://admin:maichart_secure_2025@mongodb:27017/maichart_medical?authSource=admin
       - MONGODB_DATABASE_NAME=maichart_medical
       - STORAGE_STRATEGY=hybrid
       
@@ -208,6 +124,90 @@ services:
         condition: service_healthy
       mongodb:
         condition: service_healthy
+    networks:
+      - maichart_network
+
+  # Direct Transcription Worker - DELAYED START
+  transcription_worker_direct:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: maichart_transcription_worker_direct
+    volumes:
+      - "./backend/uploads:/app/uploads"
+      - "./backend/transcripts:/app/transcripts"
+      - "./backend/chunks:/app/chunks"
+      - "./backend/logs:/app/logs"
+    environment:
+      - FASTAPI_ENV=production
+      - WORKER_TYPE=direct
+      
+      # Redis settings
+      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
+      - REDIS_PORT=12617
+      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
+      - REDIS_DB=0
+      
+      # MongoDB settings
+      - ENABLE_MONGODB=true
+      - MONGODB_CONNECTION_STRING=mongodb://admin:maichart_secure_2025@mongodb:27017/maichart_medical?authSource=admin
+      - MONGODB_DATABASE_NAME=maichart_medical
+      
+      # API Keys
+      - ASSEMBLYAI_API_KEY=d8a38013ebce49d88d0579ce2d28d0d2
+      - OPENAI_API_KEY=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
+      
+      # Medical extraction settings
+      - ENABLE_MEDICAL_EXTRACTION=true
+    command: python workers/transcription_worker.py direct
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      medical_extraction_worker:
+        condition: service_started
+    networks:
+      - maichart_network
+
+  # Chunk Transcription Worker - DELAYED START
+  transcription_worker_chunk:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: maichart_transcription_worker_chunk
+    volumes:
+      - "./backend/uploads:/app/uploads"
+      - "./backend/transcripts:/app/transcripts"
+      - "./backend/chunks:/app/chunks"
+      - "./backend/logs:/app/logs"
+    environment:
+      - FASTAPI_ENV=production
+      - WORKER_TYPE=chunk
+      
+      # Redis settings
+      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
+      - REDIS_PORT=12617
+      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
+      - REDIS_DB=0
+      
+      # MongoDB settings
+      - ENABLE_MONGODB=true
+      - MONGODB_CONNECTION_STRING=mongodb://admin:maichart_secure_2025@mongodb:27017/maichart_medical?authSource=admin
+      - MONGODB_DATABASE_NAME=maichart_medical
+      
+      # API Keys
+      - ASSEMBLYAI_API_KEY=d8a38013ebce49d88d0579ce2d28d0d2
+      - OPENAI_API_KEY=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
+      
+      # Medical extraction settings
+      - ENABLE_MEDICAL_EXTRACTION=true
+    command: python workers/transcription_worker.py chunk
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      medical_extraction_worker:
+        condition: service_started
     networks:
       - maichart_network
 
