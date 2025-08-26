@@ -1,3 +1,4 @@
+
 # FastAPI and ASGI server
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
@@ -5,14 +6,17 @@ uvicorn[standard]==0.24.0
 # File handling
 aiofiles==23.2.1
 python-multipart==0.0.6
-dotenv
+python-dotenv==1.0.0
 
 # Original dependencies
 redis==5.0.1
-python-dotenv==1.0.0
 requests==2.31.0
 cryptography==41.0.7
 assemblyai==0.23.0
+
+# NEW: MongoDB dependencies
+pymongo==4.6.1
+motor==3.3.2  # Async MongoDB driver (optional for async operations)
 
 # Enhanced audio processing dependencies
 ffmpeg-python==0.2.0
@@ -28,11 +32,16 @@ structlog==23.1.0
 # Security and file handling
 werkzeug==3.0.1
 
-# OpenAI for Medical Extraction (BioBERT removed)
+# OpenAI for Medical Extraction
 openai==1.12.0
 
 # Core dependencies - Windows compatible versions
 numpy==1.26.4
 pandas==2.1.4
 
+# HTTP client
 httpx==0.24.1
+
+# Data validation and serialization (for MongoDB models)
+pydantic==2.5.3
+email-validator==2.1.0

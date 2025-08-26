@@ -1,5 +1,30 @@
-# Fixed docker-compose.yml - MaiChart Medical Transcription System
+# docker-compose.yml - FIXED with correct worker commands
+version: '3.8'
+
 services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: maichart_mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: MaiChart2025MongoDB!@#SecurePass
+      MONGO_INITDB_DATABASE: maichart_medical
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongodb/init-scripts:/docker-entrypoint-initdb.d:ro
+    networks:
+      - maichart_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
   # FastAPI Backend Server
   backend:
     build: 
@@ -18,29 +43,38 @@ services:
       - FASTAPI_DEBUG=false
       - FASTAPI_PORT=5001
       - FASTAPI_HOST=0.0.0.0
-      # Redis settings - from environment variables
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - REDIS_DB=${REDIS_DB}
-      # API Keys - MUST be set in .env
-      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      
+      # Redis settings
+      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
+      - REDIS_PORT=12617
+      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
+      - REDIS_DB=0
+      
+      # MongoDB settings - FIXED URL encoding
+      - ENABLE_MONGODB=true
+      - MONGODB_CONNECTION_STRING=mongodb://admin:MaiChart2025MongoDB%21%40%23SecurePass@mongodb:27017/maichart_medical?authSource=admin
+      - MONGODB_DATABASE_NAME=maichart_medical
+      - STORAGE_STRATEGY=hybrid
+      - ENABLE_MEDICAL_ANALYTICS=true
+      
+      # API Keys
+      - ASSEMBLYAI_API_KEY=d8a38013ebce49d88d0579ce2d28d0d2
+      - OPENAI_API_KEY=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
+      
       # Medical extraction settings
-      - ENABLE_MEDICAL_EXTRACTION=${ENABLE_MEDICAL_EXTRACTION:-true}
-      - ENABLE_BIOBERT=${ENABLE_BIOBERT:-false}
-      - USE_GPT4_MINI=${USE_GPT4_MINI:-true}
-      - BIOBERT_MODEL=${BIOBERT_MODEL:-dmis-lab/biobert-base-cased-v1.2}
-      - MEDICAL_EXTRACTION_CONFIDENCE_THRESHOLD=${MEDICAL_EXTRACTION_CONFIDENCE_THRESHOLD:-0.7}
+      - ENABLE_MEDICAL_EXTRACTION=true
+      - USE_GPT4_MINI=true
+      
       # Security
-      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_KEY=MaiChart2025SecureDevelopmentKey!@#$%^&*ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefg
+      
       # File settings
-      - MAX_FILE_SIZE=${MAX_FILE_SIZE}
-      - ALLOWED_EXTENSIONS=${ALLOWED_EXTENSIONS}
-      # Performance settings
-      - FORCE_CPU_ONLY=${FORCE_CPU_ONLY:-true}
-      - LOW_MEMORY_MODE=${LOW_MEMORY_MODE:-true}
+      - MAX_FILE_SIZE=524288000
+      - ALLOWED_EXTENSIONS=webm,wav,mp3,ogg,m4a,flac
     restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
       interval: 30s
@@ -64,27 +98,35 @@ services:
     environment:
       - FASTAPI_ENV=production
       - WORKER_TYPE=direct
+      
       # Redis settings
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - REDIS_DB=${REDIS_DB}
+      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
+      - REDIS_PORT=12617
+      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
+      - REDIS_DB=0
+      
+      # MongoDB settings
+      - ENABLE_MONGODB=true
+      - MONGODB_CONNECTION_STRING=mongodb://admin:MaiChart2025MongoDB%21%40%23SecurePass@mongodb:27017/maichart_medical?authSource=admin
+      - MONGODB_DATABASE_NAME=maichart_medical
+      
       # API Keys
-      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ASSEMBLYAI_API_KEY=d8a38013ebce49d88d0579ce2d28d0d2
+      - OPENAI_API_KEY=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
+      
       # Medical extraction settings
-      - ENABLE_MEDICAL_EXTRACTION=${ENABLE_MEDICAL_EXTRACTION:-true}
-      - ENABLE_BIOBERT=${ENABLE_BIOBERT:-false}
-      - USE_GPT4_MINI=${USE_GPT4_MINI:-true}
+      - ENABLE_MEDICAL_EXTRACTION=true
     command: python workers/transcription_worker.py direct
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
+      mongodb:
+        condition: service_healthy
     networks:
       - maichart_network
 
-  # Chunk Transcription Worker (for large files)
+  # Chunk Transcription Worker
   transcription_worker_chunk:
     build: 
       context: ./backend
@@ -98,27 +140,35 @@ services:
     environment:
       - FASTAPI_ENV=production
       - WORKER_TYPE=chunk
+      
       # Redis settings
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - REDIS_DB=${REDIS_DB}
+      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
+      - REDIS_PORT=12617
+      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
+      - REDIS_DB=0
+      
+      # MongoDB settings
+      - ENABLE_MONGODB=true
+      - MONGODB_CONNECTION_STRING=mongodb://admin:MaiChart2025MongoDB%21%40%23SecurePass@mongodb:27017/maichart_medical?authSource=admin
+      - MONGODB_DATABASE_NAME=maichart_medical
+      
       # API Keys
-      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ASSEMBLYAI_API_KEY=d8a38013ebce49d88d0579ce2d28d0d2
+      - OPENAI_API_KEY=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
+      
       # Medical extraction settings
-      - ENABLE_MEDICAL_EXTRACTION=${ENABLE_MEDICAL_EXTRACTION:-true}
-      - ENABLE_BIOBERT=${ENABLE_BIOBERT:-false}
-      - USE_GPT4_MINI=${USE_GPT4_MINI:-true}
+      - ENABLE_MEDICAL_EXTRACTION=true
     command: python workers/transcription_worker.py chunk
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
+      mongodb:
+        condition: service_healthy
     networks:
       - maichart_network
 
-  # Medical Extraction Worker
+  # Enhanced Medical Extraction Worker with MongoDB - FIXED COMMAND
   medical_extraction_worker:
     build: 
       context: ./backend
@@ -131,33 +181,37 @@ services:
       - "./backend/logs:/app/logs"
     environment:
       - FASTAPI_ENV=production
-      - WORKER_TYPE=medical_extraction
+      - WORKER_TYPE=enhanced_medical_extraction
+      
       # Redis settings
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - REDIS_DB=${REDIS_DB}
+      - REDIS_HOST=redis-12617.c330.asia-south1-1.gce.redns.redis-cloud.com
+      - REDIS_PORT=12617
+      - REDIS_PASSWORD=BtUjzw407WUWoZueZH5fEb2mdf51oOSC
+      - REDIS_DB=0
+      
+      # MongoDB settings - FIXED
+      - ENABLE_MONGODB=true
+      - MONGODB_CONNECTION_STRING=mongodb://admin:MaiChart2025MongoDB%21%40%23SecurePass@mongodb:27017/maichart_medical?authSource=admin
+      - MONGODB_DATABASE_NAME=maichart_medical
+      - STORAGE_STRATEGY=hybrid
+      
       # API Keys
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN}
+      - OPENAI_API_KEY=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
+      
       # Medical extraction settings
-      - ENABLE_MEDICAL_EXTRACTION=${ENABLE_MEDICAL_EXTRACTION:-true}
-      - ENABLE_BIOBERT=${ENABLE_BIOBERT:-false}
-      - USE_GPT4_MINI=${USE_GPT4_MINI:-true}
-      - BIOBERT_MODEL=${BIOBERT_MODEL:-dmis-lab/biobert-base-cased-v1.2}
-      - MEDICAL_EXTRACTION_CONFIDENCE_THRESHOLD=${MEDICAL_EXTRACTION_CONFIDENCE_THRESHOLD:-0.7}
-      # Performance settings
-      - FORCE_CPU_ONLY=${FORCE_CPU_ONLY:-true}
-      - LOW_MEMORY_MODE=${LOW_MEMORY_MODE:-true}
-    command: python workers/medical_extraction_worker.py
+      - ENABLE_MEDICAL_EXTRACTION=true
+      - USE_GPT4_MINI=true
+    command: python workers/enhanced_medical_extraction_worker.py
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
+      mongodb:
+        condition: service_healthy
     networks:
       - maichart_network
 
-  # Frontend (Production Build)
+  # Frontend
   frontend:
     build:
       context: ./frontend
@@ -167,7 +221,8 @@ services:
       - "3000:80"
     environment:
       - REACT_APP_API_URL=http://localhost:5001
-      - REACT_APP_ENABLE_MEDICAL_EXTRACTION=${ENABLE_MEDICAL_EXTRACTION:-true}
+      - REACT_APP_ENABLE_MEDICAL_EXTRACTION=true
+      - REACT_APP_ENABLE_MONGODB_FEATURES=true
     depends_on:
       backend:
         condition: service_healthy
@@ -180,6 +235,8 @@ networks:
     driver: bridge
 
 volumes:
+  mongodb_data:
+    driver: local
   uploads:
     driver: local
   transcripts:

@@ -1,11 +1,6 @@
-#!/bin/bash
-
-# MaiChart - Start All Services Script
-# Runs FastAPI app and all workers
-
 set -e
 
-echo "🚀 Starting MaiChart Enhanced Medical Transcription System..."
+echo "🚀 Starting MaiChart Enhanced Medical Transcription System with MongoDB..."
 
 # Check if required environment variables are set
 if [ -z "$ASSEMBLYAI_API_KEY" ]; then
@@ -16,6 +11,14 @@ fi
 if [ -z "$REDIS_HOST" ]; then
     echo "❌ REDIS_HOST is required"
     exit 1
+fi
+
+if [ -z "$MONGODB_CONNECTION_STRING" ]; then
+    echo "⚠️ MONGODB_CONNECTION_STRING not set - MongoDB features will be disabled"
+    export ENABLE_MONGODB=false
+else
+    echo "✅ MongoDB connection configured"
+    export ENABLE_MONGODB=true
 fi
 
 # Determine Python command
@@ -41,6 +44,24 @@ fi
 echo "🔍 Checking Python installation..."
 $PYTHON_CMD --version
 
+# Check MongoDB connection if enabled
+if [ "$ENABLE_MONGODB" = "true" ]; then
+    echo "🗄️ Testing MongoDB connection..."
+    $PYTHON_CMD -c "
+from pymongo import MongoClient
+import os
+try:
+    client = MongoClient(os.getenv('MONGODB_CONNECTION_STRING'), serverSelectionTimeoutMS=5000)
+    client.admin.command('ping')
+    print('✅ MongoDB connection successful')
+    client.close()
+except Exception as e:
+    print(f'❌ MongoDB connection failed: {e}')
+    print('⚠️ Continuing with Redis-only mode')
+    exit(0)  # Don't fail the startup
+"
+fi
+
 # Create necessary directories
 mkdir -p uploads transcripts chunks logs
 
@@ -55,13 +76,13 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Start FastAPI backend in background
-echo "🔧 Starting FastAPI backend..."
+echo "🔧 Starting FastAPI backend with MongoDB support..."
 $PYTHON_CMD app.py &
 BACKEND_PID=$!
 
 # Wait for backend to start
 echo "⏳ Waiting for backend to start..."
-sleep 10
+sleep 15
 
 # Start transcription workers
 echo "🤖 Starting direct transcription worker..."
@@ -72,19 +93,21 @@ echo "🤖 Starting chunk transcription worker..."
 WORKER_TYPE=chunk $PYTHON_CMD workers/transcription_worker.py chunk &
 CHUNK_WORKER_PID=$!
 
-# Start medical extraction worker if OpenAI key is available
+# Start enhanced medical extraction worker
 if [ ! -z "$OPENAI_API_KEY" ]; then
-    echo "🏥 Starting medical extraction worker..."
-    $PYTHON_CMD workers/medical_extraction_worker.py &
+    echo "🏥 Starting enhanced medical extraction worker with MongoDB..."
+    $PYTHON_CMD workers/enhanced_medical_extraction_worker.py &
     MEDICAL_WORKER_PID=$!
 else
     echo "⚠️ OPENAI_API_KEY not found. Medical extraction worker skipped."
 fi
 
 echo ""
-echo "🎉 All services started!"
+echo "🎉 All services started successfully!"
 echo "🌐 Backend API: http://localhost:5001"
 echo "📚 API Docs: http://localhost:5001/docs"
+echo "🗄️ MongoDB: ${ENABLE_MONGODB}"
+echo "📊 Analytics: ${ENABLE_MEDICAL_ANALYTICS:-true}"
 echo "✋ Press Ctrl+C to stop all services"
 echo ""
 

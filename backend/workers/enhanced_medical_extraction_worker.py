@@ -1,8 +1,8 @@
+# backend/workers/enhanced_medical_extraction_worker.py - UPDATED for MongoDB
 #!/usr/bin/env python3
 """
-Medical Extraction Worker - COMPLETELY FIXED VERSION
-Processes completed transcripts to extract structured medical information
-FIXED: Proper infinite loop, error handling, and continuous operation
+Enhanced Medical Extraction Worker with MongoDB Storage
+Processes completed transcripts and stores results in MongoDB
 """
 
 import os
@@ -10,7 +10,7 @@ import sys
 import logging
 import time
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
@@ -24,18 +24,19 @@ load_dotenv()
 sys.path.append(str(Path(__file__).parent.parent))
 
 from workers.base_worker import BaseWorker
+from core.mongodb_client import MongoDBClient, HybridStorageClient
 
 logger = logging.getLogger(__name__)
 
 
-class FixedMedicalExtractionWorker(BaseWorker):
+class EnhancedMedicalExtractionWorker(BaseWorker):
     """
-    FIXED: Worker that processes completed transcripts for medical information extraction
-    This version stays running continuously and processes all messages
+    Enhanced worker with MongoDB integration for medical extraction
+    Stores results in both Redis (for speed) and MongoDB (for persistence)
     """
 
     def __init__(self, config_name="default"):
-        super().__init__("medical_extraction_worker", config_name)
+        super().__init__("enhanced_medical_extraction_worker", config_name)
         
         # Override stream configuration for medical extraction
         self.stream_name = "medical_extraction_queue"
@@ -44,8 +45,39 @@ class FixedMedicalExtractionWorker(BaseWorker):
         # Medical extraction settings
         self.enable_extraction = os.getenv("ENABLE_MEDICAL_EXTRACTION", "true").lower() == "true"
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.enable_mongodb = os.getenv("ENABLE_MONGODB", "true").lower() == "true"
         
-        # Medical extraction service (will be loaded on first use)
+        # Initialize MongoDB client if enabled
+        self.mongodb_client = None
+        self.hybrid_client = None
+        
+        if self.enable_mongodb:
+            try:
+                mongodb_connection = os.getenv("MONGODB_CONNECTION_STRING")
+                mongodb_database = os.getenv("MONGODB_DATABASE_NAME", "maichart_medical")
+                
+                if mongodb_connection:
+                    self.mongodb_client = MongoDBClient(
+                        connection_string=mongodb_connection,
+                        database_name=mongodb_database
+                    )
+                    
+                    # Create hybrid client for dual storage
+                    self.hybrid_client = HybridStorageClient(
+                        self.redis_client, 
+                        self.mongodb_client
+                    )
+                    
+                    logger.info("✅ MongoDB client initialized for medical extraction worker")
+                else:
+                    logger.warning("⚠️ MongoDB connection string not provided")
+                    self.enable_mongodb = False
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize MongoDB: {e}")
+                logger.warning("⚠️ Continuing with Redis-only storage")
+                self.enable_mongodb = False
+        
+        # Medical extraction service (lazy loading)
         self.medical_service_loaded = False
         self.medical_service_lock = threading.Lock()
         
@@ -55,23 +87,23 @@ class FixedMedicalExtractionWorker(BaseWorker):
             logger.warning("⚠️ OpenAI API key not found. Medical extraction will be disabled.")
             self.enable_extraction = False
         
-        logger.info(f"✅ Medical extraction worker initialized (OpenAI-only mode)")
+        logger.info(f"✅ Enhanced medical extraction worker initialized (MongoDB: {self.enable_mongodb})")
 
     def check_dependencies(self) -> bool:
         """Check if medical extraction dependencies are available"""
         try:
-            logger.info("🔍 Checking medical extraction dependencies...")
+            logger.info("🔍 Checking enhanced medical extraction dependencies...")
             
             if not self.enable_extraction:
                 logger.info("⚠️ Medical extraction disabled in configuration")
-                return True  # Worker can still run, just won't extract
+                return True
             
             # Check OpenAI API key
             if not self.openai_api_key:
                 logger.warning("⚠️ OpenAI API key not found")
-                return True  # Can still run but won't process
+                return True
             
-            # Check if OpenAI library is available
+            # Check OpenAI library
             try:
                 import openai
                 logger.info("✅ OpenAI library available")
@@ -79,7 +111,15 @@ class FixedMedicalExtractionWorker(BaseWorker):
                 logger.error("❌ OpenAI library not installed")
                 return False
             
-            logger.info("✅ All medical extraction dependencies available")
+            # Check MongoDB connection if enabled
+            if self.enable_mongodb and self.mongodb_client:
+                if not self.mongodb_client.health_check():
+                    logger.warning("⚠️ MongoDB health check failed, continuing with Redis-only")
+                    self.enable_mongodb = False
+                else:
+                    logger.info("✅ MongoDB connection healthy")
+            
+            logger.info("✅ All enhanced medical extraction dependencies available")
             return True
             
         except Exception as e:
@@ -87,22 +127,21 @@ class FixedMedicalExtractionWorker(BaseWorker):
             return False
 
     def _load_medical_service(self):
-        """Load medical extraction service on first use (lazy loading)"""
+        """Load medical extraction service on first use"""
         with self.medical_service_lock:
             if not self.medical_service_loaded:
                 try:
-                    logger.info("🔄 Loading medical extraction service...")
-                    # Import here to avoid blocking startup
+                    logger.info("🔄 Loading enhanced medical extraction service...")
                     from core.enhanced_medical_extraction_service import extract_structured_medical_data
                     self.extract_medical_data = extract_structured_medical_data
                     self.medical_service_loaded = True
-                    logger.info("✅ Medical extraction service loaded successfully")
+                    logger.info("✅ Enhanced medical extraction service loaded successfully")
                 except Exception as e:
                     logger.error(f"❌ Failed to load medical extraction service: {e}")
                     self.enable_extraction = False
 
     def process_message(self, message_data: dict) -> bool:
-        """Process medical extraction message - FIXED to handle all errors gracefully"""
+        """Process medical extraction message with MongoDB storage"""
         session_id = None
         try:
             session_id = message_data.get("session_id")
@@ -116,8 +155,9 @@ class FixedMedicalExtractionWorker(BaseWorker):
                 logger.warning(f"⚠️ No transcript text or too short for session {session_id}")
                 return self._mark_extraction_skipped(session_id, "No transcript text or too short")
             
-            logger.info(f"🏥 Processing medical extraction for session {session_id}")
+            logger.info(f"🏥 Processing enhanced medical extraction for session {session_id}")
             logger.info(f"📝 Transcript length: {len(transcript_text)} characters")
+            logger.info(f"💾 MongoDB enabled: {self.enable_mongodb}")
             
             # Check if extraction is enabled
             if not self.enable_extraction:
@@ -133,33 +173,38 @@ class FixedMedicalExtractionWorker(BaseWorker):
                 return self._mark_extraction_failed(session_id, "Medical service not available")
             
             # Update session status to processing
-            self.update_session_status(session_id, {
+            self._update_session_status(session_id, {
                 "medical_extraction_status": "processing",
-                "medical_extraction_started_at": datetime.utcnow().isoformat()
+                "medical_extraction_started_at": datetime.now(timezone.utc).isoformat(),
+                "storage_mode": "mongodb" if self.enable_mongodb else "redis_only"
             })
             
             # Run medical extraction with timeout
             extraction_result = self._run_medical_extraction_with_timeout(transcript_text)
             
             if extraction_result["status"] == "completed":
-                # Save medical data to Redis and file
-                self._save_medical_data(session_id, extraction_result["data"])
+                # Store medical data using hybrid approach
+                success = self._store_medical_data_enhanced(session_id, extraction_result["data"])
                 
-                # Update session status to completed
-                self.update_session_status(session_id, {
-                    "medical_extraction_status": "completed",
-                    "medical_extraction_completed_at": datetime.utcnow().isoformat(),
-                    "medical_data_available": True,
-                    "medical_entities_count": (
-                        len(extraction_result["data"].get("symptoms", [])) + 
-                        len(extraction_result["data"].get("drug_history", [])) +
-                        len(extraction_result["data"].get("possible_diseases", []))
-                    ),
-                    "medical_processing_time": extraction_result.get("processing_time", 0)
-                })
-                
-                logger.info(f"✅ Medical extraction completed for session {session_id}")
-                return True
+                if success:
+                    # Update session status to completed
+                    self._update_session_status(session_id, {
+                        "medical_extraction_status": "completed",
+                        "medical_extraction_completed_at": datetime.now(timezone.utc).isoformat(),
+                        "medical_data_available": True,
+                        "medical_entities_count": (
+                            len(extraction_result["data"].get("symptoms", [])) + 
+                            len(extraction_result["data"].get("drug_history", [])) +
+                            len(extraction_result["data"].get("possible_diseases", []))
+                        ),
+                        "medical_processing_time": extraction_result.get("processing_time", 0),
+                        "stored_in_mongodb": self.enable_mongodb
+                    })
+                    
+                    logger.info(f"✅ Enhanced medical extraction completed for session {session_id}")
+                    return True
+                else:
+                    return self._mark_extraction_failed(session_id, "Failed to store medical data")
                 
             else:
                 # Extraction failed
@@ -167,7 +212,7 @@ class FixedMedicalExtractionWorker(BaseWorker):
                 return self._mark_extraction_failed(session_id, error_msg)
                 
         except Exception as e:
-            logger.error(f"❌ Error processing medical extraction message: {e}")
+            logger.error(f"❌ Error processing enhanced medical extraction message: {e}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
             
@@ -175,13 +220,12 @@ class FixedMedicalExtractionWorker(BaseWorker):
             if session_id:
                 self._mark_extraction_failed(session_id, str(e))
             
-            # CRITICAL: Return True to acknowledge message and prevent infinite retries
-            return True
+            return True  # Return True to acknowledge message
 
     def _run_medical_extraction_with_timeout(self, transcript_text: str) -> Dict:
         """Run medical extraction with timeout protection"""
         try:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             
             # Create new event loop for this thread
             try:
@@ -195,11 +239,11 @@ class FixedMedicalExtractionWorker(BaseWorker):
                 extraction_data = loop.run_until_complete(
                     asyncio.wait_for(
                         self.extract_medical_data(transcript_text),
-                        timeout=120  # 2 minute timeout
+                        timeout=180  # 3 minute timeout
                     )
                 )
                 
-                processing_time = (datetime.utcnow() - start_time).total_seconds()
+                processing_time = (datetime.now(timezone.utc) - start_time).total_seconds()
                 
                 return {
                     "status": "completed",
@@ -208,7 +252,7 @@ class FixedMedicalExtractionWorker(BaseWorker):
                 }
                 
             except asyncio.TimeoutError:
-                logger.error("⏰ Medical extraction timed out after 2 minutes")
+                logger.error("⏰ Medical extraction timed out after 3 minutes")
                 return {
                     "status": "error",
                     "error": "Medical extraction timed out",
@@ -223,62 +267,103 @@ class FixedMedicalExtractionWorker(BaseWorker):
                 "data": {}
             }
 
+    def _store_medical_data_enhanced(self, session_id: str, medical_data: Dict) -> bool:
+        """Store medical data using enhanced hybrid approach"""
+        try:
+            success = True
+            
+            # Store in Redis for quick access (existing behavior)
+            try:
+                medical_data_key = f"medical_data:{session_id}"
+                self.redis_client.client.hset(
+                    medical_data_key,
+                    mapping={
+                        "medical_data": json.dumps(medical_data),
+                        "extracted_at": datetime.now(timezone.utc).isoformat(),
+                        "session_id": session_id
+                    }
+                )
+                self.redis_client.client.expire(medical_data_key, self.config.SESSION_EXPIRE_TIME)
+                logger.info(f"💾 Medical data stored in Redis for session {session_id}")
+            except Exception as e:
+                logger.error(f"❌ Error storing in Redis: {e}")
+                success = False
+            
+            # Store in MongoDB if enabled
+            if self.enable_mongodb and self.mongodb_client:
+                try:
+                    mongo_success = self.mongodb_client.store_medical_extraction(session_id, medical_data)
+                    if mongo_success:
+                        logger.info(f"🗄️ Medical data stored in MongoDB for session {session_id}")
+                    else:
+                        logger.warning(f"⚠️ Failed to store in MongoDB for session {session_id}")
+                        # Don't fail the entire process if MongoDB fails
+                except Exception as e:
+                    logger.error(f"❌ MongoDB storage error for {session_id}: {e}")
+                    # Continue with Redis-only storage
+            
+            # Store in file for backwards compatibility
+            try:
+                medical_file_path = self.config.TRANSCRIPTS_FOLDER / f"{session_id}_medical_data.json"
+                with open(medical_file_path, 'w', encoding='utf-8') as f:
+                    json.dump(medical_data, f, indent=2, ensure_ascii=False)
+                logger.info(f"📄 Medical data backup saved to file for session {session_id}")
+            except Exception as e:
+                logger.warning(f"⚠️ File backup failed for {session_id}: {e}")
+                # Don't fail for file storage issues
+            
+            # Log extraction summary
+            self._log_extraction_summary(session_id, medical_data)
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"❌ Error in enhanced medical data storage: {e}")
+            return False
+
+    def _update_session_status(self, session_id: str, updates: Dict):
+        """Update session status in both Redis and MongoDB"""
+        try:
+            # Update Redis
+            self.redis_client.update_session_status(session_id, updates)
+            
+            # Update MongoDB if available
+            if self.enable_mongodb and self.mongodb_client:
+                try:
+                    self.mongodb_client.update_session_status(session_id, updates)
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to update MongoDB status: {e}")
+                    
+        except Exception as e:
+            logger.error(f"❌ Error updating session status: {e}")
+
     def _mark_extraction_skipped(self, session_id: str, reason: str) -> bool:
         """Mark medical extraction as skipped"""
         try:
-            self.update_session_status(session_id, {
+            self._update_session_status(session_id, {
                 "medical_extraction_status": "skipped",
                 "medical_extraction_skip_reason": reason,
-                "medical_extraction_skipped_at": datetime.utcnow().isoformat()
+                "medical_extraction_skipped_at": datetime.now(timezone.utc).isoformat()
             })
             logger.info(f"⏭️ Medical extraction skipped for session {session_id}: {reason}")
             return True
         except Exception as e:
             logger.error(f"❌ Error marking extraction as skipped: {e}")
-            return True  # Still return True to acknowledge message
+            return True
 
     def _mark_extraction_failed(self, session_id: str, error_msg: str) -> bool:
         """Mark medical extraction as failed"""
         try:
-            self.update_session_status(session_id, {
+            self._update_session_status(session_id, {
                 "medical_extraction_status": "error",
                 "medical_extraction_error": error_msg,
-                "medical_extraction_failed_at": datetime.utcnow().isoformat()
+                "medical_extraction_failed_at": datetime.now(timezone.utc).isoformat()
             })
             logger.error(f"❌ Medical extraction failed for session {session_id}: {error_msg}")
-            return True  # Return True to acknowledge message and prevent infinite retries
+            return True
         except Exception as e:
             logger.error(f"❌ Error marking extraction as failed: {e}")
             return True
-
-    def _save_medical_data(self, session_id: str, medical_data: Dict):
-        """Save extracted medical data to Redis and file"""
-        try:
-            # Save to Redis with session data
-            medical_data_key = f"medical_data:{session_id}"
-            self.redis_client.client.hset(
-                medical_data_key,
-                mapping={
-                    "medical_data": json.dumps(medical_data),
-                    "extracted_at": datetime.utcnow().isoformat(),
-                    "session_id": session_id
-                }
-            )
-            self.redis_client.client.expire(medical_data_key, self.config.SESSION_EXPIRE_TIME)
-            
-            # Save to file for persistence
-            medical_file_path = self.config.TRANSCRIPTS_FOLDER / f"{session_id}_medical_data.json"
-            with open(medical_file_path, 'w', encoding='utf-8') as f:
-                json.dump(medical_data, f, indent=2, ensure_ascii=False)
-            
-            logger.info(f"💾 Medical data saved for session {session_id}")
-            
-            # Log extraction summary
-            self._log_extraction_summary(session_id, medical_data)
-            
-        except Exception as e:
-            logger.error(f"❌ Error saving medical data: {e}")
-            # Don't raise - we still want to mark as completed
 
     def _log_extraction_summary(self, session_id: str, medical_data: Dict):
         """Log a summary of extracted medical information"""
@@ -316,7 +401,8 @@ class FixedMedicalExtractionWorker(BaseWorker):
                 summary.append(f"Possible diseases: {len(diseases)} identified")
             
             if summary:
-                logger.info(f"📋 Medical Summary for {session_id}: {' | '.join(summary)}")
+                storage_info = "MongoDB + Redis" if self.enable_mongodb else "Redis only"
+                logger.info(f"📋 Medical Summary for {session_id} ({storage_info}): {' | '.join(summary)}")
             else:
                 logger.info(f"📋 No specific medical information extracted for {session_id}")
                 
@@ -324,60 +410,65 @@ class FixedMedicalExtractionWorker(BaseWorker):
             logger.warning(f"⚠️ Error logging extraction summary: {e}")
 
     def run(self):
-        """Enhanced run method - FIXED to ensure continuous operation"""
+        """Enhanced run method with MongoDB integration"""
         try:
-            logger.info("🚀 Starting FIXED Medical Extraction Worker...")
-            logger.info("🔄 This worker will run continuously and process all queued messages")
+            logger.info("🚀 Starting Enhanced Medical Extraction Worker with MongoDB...")
+            logger.info(f"💾 Storage mode: {'Hybrid (Redis + MongoDB)' if self.enable_mongodb else 'Redis only'}")
             
-            # CRITICAL: Call parent's run method which has the infinite loop
+            # Call parent's run method
             result = super().run()
             
             logger.info(f"🛑 Worker stopped with result: {result}")
             return result
             
         except Exception as e:
-            logger.error(f"💥 Fatal error in worker: {e}")
+            logger.error(f"💥 Fatal error in enhanced worker: {e}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return 1
+        finally:
+            # Clean up MongoDB connection
+            if self.mongodb_client:
+                self.mongodb_client.close_connection()
 
 
 def queue_for_medical_extraction(redis_client, session_id: str, transcript_text: str):
     """
-    Utility function to queue a transcript for medical extraction
-    Call this from the transcription worker after transcription completes
+    Utility function to queue a transcript for enhanced medical extraction
     """
     try:
         extraction_data = {
             "session_id": session_id,
             "transcript_text": transcript_text,
-            "queued_at": datetime.utcnow().isoformat(),
-            "type": "medical_extraction"
+            "queued_at": datetime.now(timezone.utc).isoformat(),
+            "type": "enhanced_medical_extraction",
+            "mongodb_enabled": os.getenv("ENABLE_MONGODB", "true").lower() == "true"
         }
         
         stream_id = redis_client.add_to_stream("medical_extraction_queue", extraction_data)
-        logger.info(f"📤 Queued medical extraction for session {session_id} -> {stream_id}")
+        logger.info(f"📤 Queued enhanced medical extraction for session {session_id} -> {stream_id}")
         return stream_id
         
     except Exception as e:
-        logger.error(f"❌ Error queuing medical extraction: {e}")
+        logger.error(f"❌ Error queuing enhanced medical extraction: {e}")
         return None
 
 
 def main():
-    """Main entry point for FIXED medical extraction worker"""
+    """Main entry point for enhanced medical extraction worker"""
     try:
-        logger.info("🚀 Starting FIXED Medical Extraction Worker...")
+        logger.info("🚀 Starting Enhanced Medical Extraction Worker with MongoDB...")
         
         # Validate environment variables
         if not os.getenv("OPENAI_API_KEY"):
             logger.warning("⚠️ OPENAI_API_KEY not found. Medical extraction will be limited.")
         
-        worker = FixedMedicalExtractionWorker()
-        logger.info("✅ FIXED medical extraction worker created successfully")
-        logger.info("🔄 Starting infinite worker loop...")
+        if not os.getenv("MONGODB_CONNECTION_STRING"):
+            logger.warning("⚠️ MONGODB_CONNECTION_STRING not found. Using Redis-only mode.")
         
-        # This should run forever until manually stopped
+        worker = EnhancedMedicalExtractionWorker()
+        logger.info("✅ Enhanced medical extraction worker created successfully")
+        
         result = worker.run()
         
         logger.info(f"🛑 Worker exited with code: {result}")
@@ -387,7 +478,7 @@ def main():
         logger.info("📨 Received keyboard interrupt, shutting down gracefully...")
         return 0
     except Exception as e:
-        logger.error(f"💥 Failed to start FIXED medical extraction worker: {e}")
+        logger.error(f"💥 Failed to start enhanced medical extraction worker: {e}")
         import traceback
         logger.error(f"Full traceback: {traceback.format_exc()}")
         return 1

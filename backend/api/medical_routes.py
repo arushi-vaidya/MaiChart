@@ -1,7 +1,3 @@
-"""
-Medical API Routes for Structured Medical Data Extraction
-Add these routes to handle medical information extraction results
-"""
 
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse, FileResponse
@@ -10,291 +6,194 @@ import json
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import List  # Only import List, use lowercase dict
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
-# Create medical router
-medical_router = APIRouter()
+# Create enhanced medical router
+enhanced_medical_router = APIRouter()
 
 def get_config_dep(request: Request):
     """Dependency to get config"""
     return request.app.state.config
 
-def get_medical_data_from_redis(redis_client, session_id: str) -> dict:
-    """Get medical data from Redis or file"""
-    try:
-        # Try Redis first
-        medical_data_key = f"medical_data:{session_id}"
-        data = redis_client.client.hgetall(medical_data_key)
-        
-        if data and data.get("medical_data"):
-            return json.loads(data["medical_data"])
-        
-        # Try file if not in Redis
-        config_obj = redis_client.config if hasattr(redis_client, 'config') else None
-        if config_obj:
-            medical_file_path = config_obj.TRANSCRIPTS_FOLDER / f"{session_id}_medical_data.json"
-            if medical_file_path.exists():
-                with open(medical_file_path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-        
-        return None
-        
-    except Exception as e:
-        logger.error(f"Error getting medical data: {e}")
-        return None
+def get_storage_client(request: Request):
+    """Dependency to get appropriate storage client"""
+    # Try hybrid client first, fallback to Redis
+    if hasattr(request.app.state, 'hybrid_client') and request.app.state.hybrid_client:
+        return request.app.state.hybrid_client
+    elif hasattr(request.app.state, 'redis_client'):
+        return request.app.state.redis_client
+    else:
+        raise HTTPException(status_code=503, detail="Storage client not available")
 
-@medical_router.get("/medical_data/{session_id}")
-async def get_medical_data(session_id: str, request: Request, config = Depends(get_config_dep)):
-    """Get extracted medical data for a session"""
-    try:
-        redis_client = request.app.state.redis_client
-        medical_data = get_medical_data_from_redis(redis_client, session_id)
-        
-        if not medical_data:
-            raise HTTPException(status_code=404, detail="Medical data not found or extraction not completed")
-        
-        return JSONResponse(content={
-            "success": True,
-            "session_id": session_id,
-            "medical_data": medical_data
-        })
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting medical data: {str(e)}")
-        raise HTTPException(status_code=500, detail="Medical data retrieval failed")
+def get_mongodb_client(request: Request):
+    """Dependency to get MongoDB client"""
+    if not hasattr(request.app.state, 'mongodb_client') or not request.app.state.mongodb_client:
+        raise HTTPException(status_code=503, detail="MongoDB not available")
+    return request.app.state.mongodb_client
 
-@medical_router.get("/medical_data/{session_id}/download")
-async def download_medical_data(session_id: str, request: Request, config = Depends(get_config_dep)):
-    """Download medical data as JSON file"""
+@enhanced_medical_router.get("/medical_data/{session_id}")
+async def get_medical_data_enhanced(session_id: str, request: Request, config=Depends(get_config_dep)):
+    """Get extracted medical data with MongoDB fallback"""
     try:
-        redis_client = request.app.state.redis_client
-        medical_data = get_medical_data_from_redis(redis_client, session_id)
+        storage_client = get_storage_client(request)
+        
+        # Use hybrid client method if available
+        if hasattr(storage_client, 'get_medical_data'):
+            medical_data = storage_client.get_medical_data(session_id)
+        else:
+            # Fallback to Redis-only approach
+            medical_data_key = f"medical_data:{session_id}"
+            data = storage_client.client.hgetall(medical_data_key)
+            if data and data.get("medical_data"):
+                medical_data = json.loads(data["medical_data"])
+            else:
+                medical_data = None
         
         if not medical_data:
             raise HTTPException(status_code=404, detail="Medical data not found")
         
-        # Create temporary file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump(medical_data, f, indent=2, ensure_ascii=False)
-            temp_path = f.name
-        
-        return FileResponse(
-            path=temp_path,
-            filename=f"medical_data_{session_id[:8]}.json",
-            media_type="application/json"
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error downloading medical data: {str(e)}")
-        raise HTTPException(status_code=500, detail="Medical data download failed")
-
-@medical_router.get("/medical_summary/{session_id}")
-async def get_medical_summary(session_id: str, request: Request, config = Depends(get_config_dep)):
-    """Get a formatted medical summary for a session"""
-    try:
-        redis_client = request.app.state.redis_client
-        medical_data = get_medical_data_from_redis(redis_client, session_id)
-        
-        if not medical_data:
-            raise HTTPException(status_code=404, detail="Medical data not found")
-        
-        # Create formatted summary
-        summary = create_medical_summary(medical_data)
-        
-        return JSONResponse(content={
-            "success": True,
-            "session_id": session_id,
-            "medical_summary": summary
-        })
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting medical summary: {str(e)}")
-        raise HTTPException(status_code=500, detail="Medical summary generation failed")
-
-@medical_router.get("/medical_alerts/{session_id}")
-async def get_medical_alerts(session_id: str, request: Request, config = Depends(get_config_dep)):
-    """Get medical alerts and critical information for a session"""
-    try:
-        redis_client = request.app.state.redis_client
-        medical_data = get_medical_data_from_redis(redis_client, session_id)
-        
-        if not medical_data:
-            raise HTTPException(status_code=404, detail="Medical data not found")
-        
-        # Extract critical alerts
-        alerts = extract_medical_alerts(medical_data)
-        
-        return JSONResponse(content={
-            "success": True,
-            "session_id": session_id,
-            "alerts": alerts
-        })
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting medical alerts: {str(e)}")
-        raise HTTPException(status_code=500, detail="Medical alerts retrieval failed")
-
-@medical_router.get("/medical_stats")
-async def get_medical_extraction_stats(request: Request, config = Depends(get_config_dep)):
-    """Get statistics about medical extractions"""
-    try:
-        redis_client = request.app.state.redis_client
-        
-        # Count medical extractions
-        medical_keys = redis_client.client.keys("medical_data:*")
-        total_extractions = len(medical_keys)
-        
-        # Analyze extraction data
-        extraction_stats = {
-            "total_medical_extractions": total_extractions,
-            "common_conditions": {},
-            "common_medications": {},
-            "allergy_alerts": 0,
-            "high_severity_cases": 0,
-            "extraction_success_rate": 0.0
+        # Add storage metadata
+        storage_info = {
+            "mongodb_enabled": hasattr(request.app.state, 'mongodb_client') and request.app.state.mongodb_client is not None,
+            "hybrid_storage": hasattr(storage_client, 'get_medical_data')
         }
         
-        conditions_count = {}
-        medications_count = {}
-        successful_extractions = 0
+        return JSONResponse(content={
+            "success": True,
+            "session_id": session_id,
+            "medical_data": medical_data,
+            "storage_info": storage_info
+        })
         
-        for key in medical_keys[:50]:  # Sample first 50 for performance
-            try:
-                data = redis_client.client.hgetall(key)
-                if data and data.get("medical_data"):
-                    medical_info = json.loads(data["medical_data"])
-                    successful_extractions += 1
-                    
-                    # Count conditions
-                    for condition in medical_info.get("possible_diseases", []):
-                        conditions_count[condition] = conditions_count.get(condition, 0) + 1
-                    
-                    # Count medications
-                    for med in medical_info.get("drug_history", []):
-                        medications_count[med] = medications_count.get(med, 0) + 1
-                    
-                    # Count alerts
-                    if medical_info.get("allergies"):
-                        extraction_stats["allergy_alerts"] += 1
-                    
-                    # Count high severity
-                    for complaint in medical_info.get("chief_complaint_details", []):
-                        severity = complaint.get("severity", "")
-                        if ("high" in severity.lower() or "severe" in severity.lower() or 
-                            any(num in severity for num in ["8", "9", "10"])):
-                            extraction_stats["high_severity_cases"] += 1
-                            
-            except Exception as e:
-                logger.warning(f"Error processing medical stats for {key}: {e}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting enhanced medical data: {str(e)}")
+        raise HTTPException(status_code=500, detail="Medical data retrieval failed")
+
+@enhanced_medical_router.get("/medical_alerts/{session_id}")
+async def get_medical_alerts_enhanced(session_id: str, request: Request, config=Depends(get_config_dep)):
+    """Get medical alerts with MongoDB support"""
+    try:
+        # Try MongoDB first if available
+        if hasattr(request.app.state, 'mongodb_client') and request.app.state.mongodb_client:
+            mongodb_client = request.app.state.mongodb_client
+            alerts = mongodb_client.get_medical_alerts(session_id)
+            
+            if alerts:
+                return JSONResponse(content={
+                    "success": True,
+                    "session_id": session_id,
+                    "alerts": alerts,
+                    "source": "mongodb"
+                })
         
-        # Calculate success rate
-        if total_extractions > 0:
-            extraction_stats["extraction_success_rate"] = successful_extractions / total_extractions
+        # Fallback to extracting alerts from medical data
+        storage_client = get_storage_client(request)
         
-        # Get top 5 most common
-        extraction_stats["common_conditions"] = dict(sorted(conditions_count.items(), key=lambda x: x[1], reverse=True)[:5])
-        extraction_stats["common_medications"] = dict(sorted(medications_count.items(), key=lambda x: x[1], reverse=True)[:5])
+        if hasattr(storage_client, 'get_medical_data'):
+            medical_data = storage_client.get_medical_data(session_id)
+        else:
+            medical_data_key = f"medical_data:{session_id}"
+            data = storage_client.client.hgetall(medical_data_key)
+            if data and data.get("medical_data"):
+                medical_data = json.loads(data["medical_data"])
+            else:
+                medical_data = None
+        
+        if not medical_data:
+            raise HTTPException(status_code=404, detail="Medical data not found")
+        
+        # Generate alerts from medical data
+        alerts = generate_medical_alerts_from_data(medical_data)
+        
+        return JSONResponse(content={
+            "success": True,
+            "session_id": session_id,
+            "alerts": alerts,
+            "source": "generated"
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting enhanced medical alerts: {str(e)}")
+        raise HTTPException(status_code=500, detail="Medical alerts retrieval failed")
+
+@enhanced_medical_router.get("/medical_analytics/summary")
+async def get_medical_analytics_summary(request: Request, config=Depends(get_config_dep)):
+    """Get comprehensive medical analytics summary from MongoDB"""
+    try:
+        mongodb_client = get_mongodb_client(request)
+        stats = mongodb_client.get_medical_statistics()
         
         return JSONResponse(content={
             "success": True,
             "timestamp": datetime.utcnow().isoformat(),
-            "medical_extraction_stats": extraction_stats
+            "analytics_summary": stats,
+            "data_source": "mongodb"
         })
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error getting medical extraction stats: {str(e)}")
-        raise HTTPException(status_code=500, detail="Medical stats retrieval failed")
+        logger.error(f"Error getting medical analytics: {str(e)}")
+        raise HTTPException(status_code=500, detail="Medical analytics retrieval failed")
 
-def create_medical_summary(medical_data: dict) -> dict:
-    """Create a formatted medical summary from extracted data"""
+@enhanced_medical_router.get("/patients/by_condition/{condition}")
+async def search_patients_by_condition(
+    condition: str, 
+    limit: int = 20, 
+    request: Request = None, 
+    config=Depends(get_config_dep)
+):
+    """Search patients by medical condition using MongoDB"""
     try:
-        summary = {
-            "patient_overview": "",
-            "key_findings": [],
-            "medications_count": 0,
-            "allergies_count": 0,
-            "symptoms_count": 0,
-            "critical_alerts": []
-        }
+        mongodb_client = get_mongodb_client(request)
+        patients = mongodb_client.search_patients_by_condition(condition, limit)
         
-        # Patient overview
-        patient = medical_data.get("patient_details", {})
-        if patient.get("name") or patient.get("age"):
-            overview_parts = []
-            if patient.get("name"):
-                overview_parts.append(f"Patient: {patient['name']}")
-            if patient.get("age"):
-                overview_parts.append(f"Age: {patient['age']}")
-            if patient.get("gender"):
-                overview_parts.append(f"Gender: {patient['gender']}")
-            summary["patient_overview"] = ", ".join(overview_parts)
+        return JSONResponse(content={
+            "success": True,
+            "condition": condition,
+            "patient_count": len(patients),
+            "patients": patients
+        })
         
-        # Key findings
-        findings = []
-        
-        # Chief complaints
-        complaints = medical_data.get("chief_complaints", [])
-        if complaints:
-            findings.append(f"Chief complaints: {', '.join(complaints)}")
-        
-        # Chronic diseases
-        chronic = medical_data.get("chronic_diseases", [])
-        if chronic:
-            findings.append(f"Chronic conditions: {', '.join(chronic)}")
-        
-        # Possible diseases
-        diseases = medical_data.get("possible_diseases", [])
-        if diseases:
-            findings.append(f"Possible diagnoses: {', '.join(diseases)}")
-        
-        summary["key_findings"] = findings
-        
-        # Counts
-        summary["medications_count"] = len(medical_data.get("drug_history", []))
-        summary["allergies_count"] = len(medical_data.get("allergies", []))
-        summary["symptoms_count"] = len(medical_data.get("symptoms", []))
-        
-        # Critical alerts
-        alerts = []
-        allergies = medical_data.get("allergies", [])
-        if allergies:
-            alerts.append({
-                "type": "allergy",
-                "severity": "high",
-                "message": f"Patient has {len(allergies)} known allergies: {', '.join(allergies)}"
-            })
-        
-        # Check for high-severity complaints
-        complaint_details = medical_data.get("chief_complaint_details", [])
-        for complaint in complaint_details:
-            severity = complaint.get("severity", "")
-            if "high" in severity.lower() or any(num in severity for num in ["8", "9", "10"]):
-                alerts.append({
-                    "type": "high_severity_symptom",
-                    "severity": "high",
-                    "message": f"High severity complaint: {complaint.get('complaint', 'Unknown')} (Severity: {severity})"
-                })
-        
-        summary["critical_alerts"] = alerts
-        
-        return summary
-        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error creating medical summary: {e}")
-        return {"error": str(e)}
+        logger.error(f"Error searching patients by condition: {str(e)}")
+        raise HTTPException(status_code=500, detail="Patient search failed")
 
-def extract_medical_alerts(medical_data: dict) -> List[dict]:
-    """Extract critical medical alerts from structured data"""
+@enhanced_medical_router.get("/patients/with_allergies")
+async def get_allergy_patients(
+    allergy_type: Optional[str] = None,
+    request: Request = None, 
+    config=Depends(get_config_dep)
+):
+    """Get patients with allergies from MongoDB"""
+    try:
+        mongodb_client = get_mongodb_client(request)
+        patients = mongodb_client.get_patients_with_allergies(allergy_type)
+        
+        return JSONResponse(content={
+            "success": True,
+            "allergy_filter": allergy_type,
+            "patient_count": len(patients),
+            "patients": patients
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting allergy patients: {str(e)}")
+        raise HTTPException(status_code=500, detail="Allergy patient search failed")
+
+
+def generate_medical_alerts_from_data(medical_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Generate medical alerts from extracted medical data"""
     alerts = []
     
     try:
@@ -342,29 +241,7 @@ def extract_medical_alerts(medical_data: dict) -> List[dict]:
                 "action_required": "Consider drug interactions and comprehensive care plan"
             })
         
-        # Lifestyle risk factors
-        lifestyle = medical_data.get("lifestyle", [])
-        risk_factors = []
-        for habit in lifestyle:
-            habit_name = habit.get("habit", "").lower()
-            if "smok" in habit_name or "tobacco" in habit_name:
-                risk_factors.append(f"Smoking: {habit.get('frequency', 'Unknown frequency')}")
-            elif "alcohol" in habit_name or "drink" in habit_name:
-                freq = habit.get("frequency", "")
-                if "daily" in freq.lower() or "heavy" in freq.lower():
-                    risk_factors.append(f"Heavy alcohol use: {freq}")
-        
-        if risk_factors:
-            alerts.append({
-                "type": "lifestyle_risks",
-                "priority": "medium",
-                "title": "⚠️ LIFESTYLE RISK FACTORS",
-                "message": f"{len(risk_factors)} risk factors identified",
-                "details": risk_factors,
-                "action_required": "Consider counseling and risk reduction strategies"
-            })
-        
-        # Drug interactions check (basic)
+        # Multiple medications
         medications = medical_data.get("drug_history", [])
         if len(medications) > 3:
             alerts.append({
@@ -390,58 +267,12 @@ def extract_medical_alerts(medical_data: dict) -> List[dict]:
         return alerts
         
     except Exception as e:
-        logger.error(f"Error extracting medical alerts: {e}")
+        logger.error(f"Error generating medical alerts: {e}")
         return [{
             "type": "error",
             "priority": "high",
-            "title": "❌ ALERT EXTRACTION ERROR",
+            "title": "❌ ALERT GENERATION ERROR",
             "message": f"Error processing medical alerts: {str(e)}",
             "details": [],
             "action_required": "Manual review required"
         }]
-
-@medical_router.post("/trigger_medical_extraction/{session_id}")
-async def trigger_medical_extraction(session_id: str, request: Request, config = Depends(get_config_dep)):
-    """Manually trigger medical extraction for a completed transcript"""
-    try:
-        redis_client = request.app.state.redis_client
-        
-        # Get session status
-        session_data = redis_client.get_session_status(session_id)
-        if not session_data:
-            raise HTTPException(status_code=404, detail="Session not found")
-        
-        if session_data.get("status") != "completed":
-            raise HTTPException(status_code=400, detail="Session must be completed before medical extraction")
-        
-        transcript_text = session_data.get("transcript_text", "")
-        if not transcript_text or len(transcript_text.strip()) < 10:
-            raise HTTPException(status_code=400, detail="No transcript text available for extraction")
-        
-        # Queue for medical extraction
-        from workers.medical_extraction_worker import queue_for_medical_extraction
-        stream_id = queue_for_medical_extraction(redis_client, session_id, transcript_text)
-        
-        if stream_id:
-            # Update session status
-            redis_client.update_session_status(session_id, {
-                "medical_extraction_queued": True,
-                "medical_extraction_stream_id": stream_id,
-                "medical_extraction_triggered_manually": True,
-                "medical_extraction_queued_at": datetime.utcnow().isoformat()
-            })
-            
-            return JSONResponse(content={
-                "success": True,
-                "message": "Medical extraction queued successfully",
-                "session_id": session_id,
-                "stream_id": stream_id
-            })
-        else:
-            raise HTTPException(status_code=500, detail="Failed to queue medical extraction")
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error triggering medical extraction: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to trigger medical extraction")
