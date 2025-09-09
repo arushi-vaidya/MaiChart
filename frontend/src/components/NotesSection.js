@@ -7,7 +7,6 @@ const NotesSection = ({ onShowRecording, onOpenTranscript, onShowSummaries }) =>
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentFilter, setCurrentFilter] = useState('all');
-  const [expandedNotes, setExpandedNotes] = useState(new Set());
 
   // Load notes from backend
   const loadNotes = useCallback(async () => {
@@ -107,18 +106,6 @@ const NotesSection = ({ onShowRecording, onOpenTranscript, onShowSummaries }) =>
     }
   }, [notes]);
 
-  // Toggle note expansion
-  const toggleExpand = useCallback((sessionId, event) => {
-    event.stopPropagation();
-    const newExpanded = new Set(expandedNotes);
-    if (newExpanded.has(sessionId)) {
-      newExpanded.delete(sessionId);
-    } else {
-      newExpanded.add(sessionId);
-    }
-    setExpandedNotes(newExpanded);
-  }, [expandedNotes]);
-
   // Format date for display
   const formatDate = useCallback((date) => {
     return new Date(date).toLocaleDateString('en-US', {
@@ -130,142 +117,20 @@ const NotesSection = ({ onShowRecording, onOpenTranscript, onShowSummaries }) =>
     });
   }, []);
 
-  // Get confidence class and display
+  // Get confidence display
   const getConfidenceDisplay = useCallback((confidence) => {
     const conf = confidence || 0;
     const percentage = Math.round(conf * 100);
     
     let level = 'low';
-    let icon = '🔴';
     if (conf >= 0.8) {
       level = 'high';
-      icon = '🟢';
     } else if (conf >= 0.6) {
       level = 'medium';
-      icon = '🟡';
     }
     
-    return { level, percentage, icon };
+    return { level, percentage };
   }, []);
-
-  // Create enhanced note card
-  const createEnhancedNoteCard = useCallback((note) => {
-    const date = new Date(note.created_at || note.timestamp);
-    const confidence = getConfidenceDisplay(note.confidence);
-    const preview = note.text ? note.text.substring(0, 200) : 'No transcript available';
-    const wordCount = note.text ? note.text.split(' ').length : 0;
-    const isExpanded = expandedNotes.has(note.session_id);
-    const displayText = isExpanded ? note.text : preview;
-
-    return (
-      <div 
-        key={note.session_id}
-        className={`note-card ${confidence.level === 'high' ? 'high-quality' : ''}`} 
-        onClick={() => onOpenTranscript(note)}
-      >
-        {/* Note Header */}
-        <div className="note-header">
-          <div className="note-primary-info">
-            <div className="note-title">
-              <span className="note-icon">📝</span>
-              <span>Medical Transcript</span>
-            </div>
-            <div className="note-date">{formatDate(date)}</div>
-          </div>
-          <div className="note-actions">
-            <button 
-              className="action-btn download" 
-              onClick={(e) => downloadNote(note.session_id, e)} 
-              title="Download Transcript"
-            >
-              💾
-            </button>
-            <button 
-              className="action-btn expand" 
-              onClick={(e) => toggleExpand(note.session_id, e)} 
-              title={isExpanded ? "Collapse" : "Expand"}
-            >
-              {isExpanded ? '📖' : '📄'}
-            </button>
-            <button 
-              className="action-btn delete" 
-              onClick={(e) => deleteNote(note.session_id, e)} 
-              title="Delete Note"
-            >
-              🗑️
-            </button>
-          </div>
-        </div>
-        
-        {/* Note Quality Indicators */}
-        <div className="note-quality-bar">
-          <div className="quality-item">
-            <span className="quality-icon">{confidence.icon}</span>
-            <span className="quality-label">Confidence</span>
-            <span className={`quality-value confidence-${confidence.level}`}>
-              {confidence.percentage}%
-            </span>
-          </div>
-          <div className="quality-item">
-            <span className="quality-icon">📊</span>
-            <span className="quality-label">Words</span>
-            <span className="quality-value">{wordCount.toLocaleString()}</span>
-          </div>
-          {note.duration && (
-            <div className="quality-item">
-              <span className="quality-icon">⏱️</span>
-              <span className="quality-label">Duration</span>
-              <span className="quality-value">{Math.round(note.duration)}s</span>
-            </div>
-          )}
-        </div>
-        
-        {/* Transcript Preview */}
-        <div className="note-content">
-          <div className={`note-text ${isExpanded ? 'expanded' : ''}`}>
-            {displayText}
-            {!isExpanded && note.text && note.text.length > 200 && (
-              <span className="text-truncation">...</span>
-            )}
-          </div>
-          
-          {note.text && note.text.length > 200 && (
-            <button 
-              className="expand-text-btn" 
-              onClick={(e) => toggleExpand(note.session_id, e)}
-            >
-              {isExpanded ? (
-                <>
-                  <span>📄</span>
-                  Show preview
-                </>
-              ) : (
-                <>
-                  <span>📖</span>
-                  Read full transcript
-                </>
-              )}
-            </button>
-          )}
-        </div>
-
-        {/* Note Footer */}
-        <div className="note-footer">
-          <div className="footer-left">
-            <span className="session-id">ID: {note.session_id.substring(0, 8)}...</span>
-            {note.filename && (
-              <span className="original-file">📁 {note.filename}</span>
-            )}
-          </div>
-          <div className="footer-right">
-            <span className="processing-indicator">
-              ✅ Processed
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  }, [expandedNotes, formatDate, getConfidenceDisplay, onOpenTranscript, downloadNote, deleteNote, toggleExpand]);
 
   // Calculate notes statistics
   const calculateNotesStats = useCallback(() => {
@@ -283,116 +148,206 @@ const NotesSection = ({ onShowRecording, onOpenTranscript, onShowSummaries }) =>
     return { total, highConfidence, today: todayNotes, totalWords };
   }, [filteredNotes]);
 
+  const stats = calculateNotesStats();
+
   if (loading) {
     return (
-      <section className="notes-section">
-        <div className="notes-header">
-          <h2 className="notes-title">📝 Medical Transcripts</h2>
+      <div className="section notes-section">
+        <div className="section-header">
+          <h1 className="section-title">Transcripts</h1>
+          <p className="section-subtitle">All medical transcriptions</p>
         </div>
-        <div className="loading-state">
-          <div className="loading-spinner"></div>
+        <div className="loading">
+          <div className="spinner"></div>
           <p>Loading transcripts...</p>
         </div>
-      </section>
+      </div>
     );
   }
 
-  const stats = calculateNotesStats();
-
   return (
-    <section className="notes-section">
-      <div className="notes-header">
-        <h2 className="notes-title">📝 Medical Transcripts</h2>
-        <div className="notes-controls">
-          <input 
-            type="text" 
-            className="search-box" 
-            placeholder="Search transcripts..."
-            value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
-          />
-          <button className="btn btn-outline" onClick={loadNotes}>
-            🔄 Refresh
-          </button>
-          <button className="btn btn-outline" onClick={onShowSummaries}>
-            🏥 Medical View
-          </button>
-          <button className="btn btn-primary" onClick={onShowRecording}>
-            ➕ New Recording
-          </button>
-        </div>
+    <div className="section notes-section">
+      <div className="section-header">
+        <h1 className="section-title">Transcripts</h1>
+        <p className="section-subtitle">View and manage all medical transcriptions</p>
       </div>
 
-      {/* Enhanced Filter Chips */}
+      {/* Controls */}
+      <div className="section-controls">
+        <input 
+          type="text" 
+          className="input search-input" 
+          placeholder="Search transcripts..."
+          value={searchQuery}
+          onChange={(e) => handleSearch(e.target.value)}
+        />
+        <button className="btn btn-secondary" onClick={loadNotes}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: '16px', height: '16px'}}>
+            <polyline points="23 4 23 10 17 10"/>
+            <polyline points="1 20 1 14 7 14"/>
+            <path d="m3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          Refresh
+        </button>
+        <button className="btn btn-outline" onClick={onShowSummaries}>
+          Medical Data
+        </button>
+        <button className="btn btn-primary" onClick={onShowRecording}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: '16px', height: '16px'}}>
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          New Recording
+        </button>
+      </div>
+
+      {/* Filter Chips */}
       <div className="filter-chips">
         {[
-          { key: 'all', label: 'All Transcripts', icon: '📋', count: stats.total },
-          { key: 'today', label: 'Today', icon: '📅', count: stats.today },
-          { key: 'week', label: 'This Week', icon: '📆' },
-          { key: 'high-confidence', label: 'High Quality', icon: '🎯', count: stats.highConfidence }
+          { key: 'all', label: 'All Transcripts', count: stats.total },
+          { key: 'today', label: 'Today', count: stats.today },
+          { key: 'week', label: 'This Week' },
+          { key: 'high-confidence', label: 'High Quality', count: stats.highConfidence }
         ].map(filter => (
-          <div 
+          <button
             key={filter.key}
             className={`filter-chip ${currentFilter === filter.key ? 'active' : ''}`}
             onClick={() => handleFilter(filter.key)}
           >
-            <span className="filter-icon">{filter.icon}</span>
             <span>{filter.label}</span>
             {filter.count !== undefined && (
-              <span className="filter-count">{filter.count}</span>
+              <span className="filter-chip-count">{filter.count}</span>
             )}
-          </div>
+          </button>
         ))}
       </div>
 
-      {/* Enhanced Notes Grid */}
+      {/* Notes Grid */}
       {filteredNotes.length > 0 ? (
         <>
-          <div className="notes-grid">
-            {filteredNotes.map(createEnhancedNoteCard)}
+          <div className="cards-grid">
+            {filteredNotes.map((note) => {
+              const date = new Date(note.created_at || note.timestamp);
+              const confidence = getConfidenceDisplay(note.confidence);
+              const wordCount = note.text ? note.text.split(' ').length : 0;
+              const preview = note.text ? note.text.substring(0, 150) + '...' : 'No transcript available';
+
+              return (
+                <div 
+                  key={note.session_id}
+                  className="note-card" 
+                  onClick={() => onOpenTranscript(note)}
+                >
+                  <div className="card-header">
+                    <div>
+                      <h3 className="card-title">Medical Transcript</h3>
+                      <div className="card-meta">{formatDate(date)}</div>
+                    </div>
+                    <div className="card-actions">
+                      <button 
+                        className="card-action-btn" 
+                        onClick={(e) => downloadNote(note.session_id, e)} 
+                        title="Download"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: '16px', height: '16px'}}>
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                          <polyline points="7 10 12 15 17 10"/>
+                          <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                      </button>
+                      <button 
+                        className="card-action-btn" 
+                        onClick={(e) => deleteNote(note.session_id, e)} 
+                        title="Delete"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: '16px', height: '16px'}}>
+                          <polyline points="3 6 5 6 21 6"/>
+                          <path d="m19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="card-content">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className={`confidence-dot ${confidence.level}`}></div>
+                        <span className={`confidence-indicator confidence-${confidence.level}`}>
+                          {confidence.percentage}%
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {wordCount.toLocaleString()} words
+                      </div>
+                      {note.duration && (
+                        <div className="text-sm text-gray-500">
+                          {Math.round(note.duration)}s
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="card-text truncated">
+                      {preview}
+                    </div>
+                  </div>
+
+                  <div className="card-footer">
+                    <div className="text-xs text-gray-400">
+                      ID: {note.session_id.substring(0, 8)}...
+                    </div>
+                    <div className="status status-success">
+                      Processed
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          {/* Enhanced Stats Footer */}
-          <div className="notes-stats">
-            <div className="stats-grid">
-              <div className="stat-card">
-                <span className="stat-number">{stats.total}</span>
-                <span className="stat-label">Total Transcripts</span>
-              </div>
-              <div className="stat-card">
-                <span className="stat-number">{stats.highConfidence}</span>
-                <span className="stat-label">High Quality</span>
-              </div>
-              <div className="stat-card">
-                <span className="stat-number">{stats.today}</span>
-                <span className="stat-label">Today</span>
-              </div>
-              <div className="stat-card">
-                <span className="stat-number">{stats.totalWords.toLocaleString()}</span>
-                <span className="stat-label">Total Words</span>
-              </div>
+          {/* Stats */}
+          <div className="stats-grid">
+            <div className="stat-card">
+              <div className="stat-number">{stats.total}</div>
+              <div className="stat-label">Total Transcripts</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-number">{stats.highConfidence}</div>
+              <div className="stat-label">High Quality</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-number">{stats.today}</div>
+              <div className="stat-label">Today</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-number">{stats.totalWords.toLocaleString()}</div>
+              <div className="stat-label">Total Words</div>
             </div>
           </div>
         </>
       ) : (
         <div className="empty-state">
-          <div className="empty-state-icon">📝</div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{width: '64px', height: '64px', margin: '0 auto 1.5rem', color: 'var(--gray-400)'}}>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14,2 14,8 20,8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
           <h3>No Transcripts Available</h3>
           <p>
             Start by recording your first medical consultation or uploading an audio file. 
             Our AI will transcribe and extract medical information automatically.
           </p>
-          <div className="empty-state-actions">
+          <div className="flex gap-4 justify-center mt-6">
             <button className="btn btn-primary btn-lg" onClick={onShowRecording}>
-              🎤 Start Recording
+              Start Recording
             </button>
             <button className="btn btn-outline" onClick={onShowSummaries}>
-              🏥 View Medical Summaries
+              View Medical Data
             </button>
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 };
 

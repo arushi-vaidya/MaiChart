@@ -99,7 +99,7 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }, []);
 
-  // Enhanced monitoring with better step descriptions
+  // Enhanced monitoring
   const monitorProcessing = useCallback(async (sessionId) => {
     const maxAttempts = 120; // 2 minutes max for transcription
     let attempts = 0;
@@ -111,45 +111,45 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
         const step = statusData.step || '';
 
         if (status === 'completed') {
-          updateStatus('✅ Medical transcription completed successfully!', 'success');
+          updateStatus('Transcription completed successfully!', 'success');
           setLastSessionId(sessionId);
           return;
         } else if (status === 'error') {
-          updateStatus(`❌ Processing failed: ${statusData.error}`, 'error');
+          updateStatus(`Processing failed: ${statusData.error}`, 'error');
           return;
         } else if (status === 'processing') {
-          let stepMessage = '🔄 Processing audio...';
+          let stepMessage = 'Processing audio...';
           if (step === 'analyzing_audio') {
-            stepMessage = '🔍 Analyzing audio quality and format...';
+            stepMessage = 'Analyzing audio quality and format...';
           } else if (step === 'processing_audio') {
-            stepMessage = '🎵 Transcribing speech with medical optimization...';
+            stepMessage = 'Transcribing speech with medical optimization...';
           } else if (step === 'saving_transcript') {
-            stepMessage = '💾 Saving transcript and extracting medical data...';
+            stepMessage = 'Saving transcript and extracting medical data...';
           }
           updateStatus(stepMessage, 'processing', step);
         } else if (status === 'queued') {
-          updateStatus('⏳ File uploaded successfully, waiting in processing queue...', 'processing', 'queued');
+          updateStatus('File uploaded successfully, waiting in processing queue...', 'processing', 'queued');
         }
 
         attempts++;
         if (attempts < maxAttempts) {
           setTimeout(checkStatus, 1000);
         } else {
-          updateStatus('⏰ Processing timed out. Please try again or contact support.', 'error');
+          updateStatus('Processing timed out. Please try again or contact support.', 'error');
         }
       } catch (error) {
         console.error('Status check error:', error);
-        updateStatus('❌ Error checking processing status', 'error');
+        updateStatus('Error checking processing status', 'error');
       }
     };
 
     checkStatus();
   }, [updateStatus]);
 
-  // Upload audio file - ENHANCED VERSION
+  // Upload audio file
   const uploadAudioFile = useCallback(async (file) => {
     try {
-      updateStatus('📤 Uploading file to medical transcription system...', 'uploading');
+      updateStatus('Uploading file to medical transcription system...', 'processing');
       setShowUploadProgress(true);
 
       // Create a proper file object for recorded blobs
@@ -173,14 +173,14 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
 
       console.log('Medical audio upload successful:', result);
       setLastSessionId(result.id);
-      updateStatus('✅ Upload successful! Starting medical transcription...', 'success');
+      updateStatus('Upload successful! Starting medical transcription...', 'success');
 
       // Monitor processing status
       monitorProcessing(result.id);
 
     } catch (error) {
       console.error('Upload error:', error);
-      updateStatus(`❌ Upload failed: ${error.message}`, 'error');
+      updateStatus(`Upload failed: ${error.message}`, 'error');
     } finally {
       setTimeout(() => {
         setShowUploadProgress(false);
@@ -192,7 +192,7 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
   // Start recording
   const startRecording = useCallback(async () => {
     try {
-      updateStatus('🎙️ Requesting microphone access for medical recording...', 'info');
+      updateStatus('Requesting microphone access...', 'processing');
 
       // Request microphone access with enhanced audio settings
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -232,20 +232,18 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
-          console.log('Audio chunk recorded:', event.data.size, 'bytes');
         }
       };
 
       // Handle recording stop
       mediaRecorderRef.current.onstop = () => {
-        console.log('Recording stopped, processing medical audio...');
         processRecording();
       };
 
       // Handle errors
       mediaRecorderRef.current.onerror = (event) => {
         console.error('MediaRecorder error:', event.error);
-        updateStatus('❌ Recording error occurred', 'error');
+        updateStatus('Recording error occurred', 'error');
         setIsRecording(false);
         stopTimer();
       };
@@ -254,21 +252,18 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
       mediaRecorderRef.current.start(1000);
       setIsRecording(true);
 
-      updateStatus('🎤 Recording medical consultation... Click "Stop Recording" when finished', 'recording');
+      updateStatus('Recording... Click "Stop Recording" when finished', 'processing');
       startTimer();
-
-      console.log('Medical recording started with MIME type:', mediaRecorderRef.current.mimeType);
 
     } catch (error) {
       console.error('Error starting recording:', error);
-      updateStatus('❌ Could not access microphone. Please check permissions.', 'error');
+      updateStatus('Could not access microphone. Please check permissions.', 'error');
     }
   }, [updateStatus, startTimer, stopTimer]);
 
   // Stop recording
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
-      console.log('Stopping medical recording...');
       mediaRecorderRef.current.stop();
       setIsRecording(false);
 
@@ -276,11 +271,10 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => {
           track.stop();
-          console.log('Audio track stopped');
         });
       }
 
-      updateStatus('🔄 Processing recorded medical consultation...', 'processing');
+      updateStatus('Processing recorded audio...', 'processing');
       stopTimer();
     }
   }, [isRecording, updateStatus, stopTimer]);
@@ -288,10 +282,8 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
   // Process recording
   const processRecording = useCallback(async () => {
     try {
-      console.log('Processing medical recording with', audioChunksRef.current.length, 'chunks');
-      
       if (audioChunksRef.current.length === 0) {
-        updateStatus('❌ No audio data recorded', 'error');
+        updateStatus('No audio data recorded', 'error');
         return;
       }
 
@@ -299,20 +291,13 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
       const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
       const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
 
-      console.log('Medical audio blob created:', {
-        size: audioBlob.size,
-        type: audioBlob.type,
-        chunks: audioChunksRef.current.length
-      });
-
-      // Validate the blob
       if (audioBlob.size === 0) {
-        updateStatus('❌ Recording is empty', 'error');
+        updateStatus('Recording is empty', 'error');
         return;
       }
 
       if (audioBlob.size < 1000) {
-        updateStatus('❌ Recording too short. Please record at least a few seconds.', 'error');
+        updateStatus('Recording too short. Please record at least a few seconds.', 'error');
         return;
       }
 
@@ -320,8 +305,8 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
       await uploadAudioFile(audioBlob);
 
     } catch (error) {
-      console.error('Error processing medical recording:', error);
-      updateStatus('❌ Error processing recording', 'error');
+      console.error('Error processing recording:', error);
+      updateStatus('Error processing recording', 'error');
     }
   }, [uploadAudioFile, updateStatus]);
 
@@ -329,14 +314,9 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
   const handleFileUpload = useCallback((event) => {
     if (event.target.files.length > 0) {
       const file = event.target.files[0];
-      console.log('Medical file selected:', {
-        name: file.name,
-        size: file.size,
-        type: file.type
-      });
       
       if (validateFile(file)) {
-        updateStatus(`📁 Selected: ${file.name} (${formatFileSize(file.size)})`, 'info');
+        updateStatus(`Selected: ${file.name} (${formatFileSize(file.size)})`, 'info');
         uploadAudioFile(file);
       }
     }
@@ -349,163 +329,110 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
     fileInputRef.current?.click();
   }, []);
 
-  // View last transcript
-  const viewLastTranscript = useCallback(async () => {
-    if (!lastSessionId) return;
-    
-    try {
-      const response = await apiService.getTranscript(lastSessionId);
-      const transcript = response.transcript;
-      
-      // Create a note object for the modal
-      const noteForModal = {
-        session_id: lastSessionId,
-        text: transcript.text,
-        confidence: transcript.confidence,
-        created_at: new Date().toISOString(),
-        word_count: transcript.words_count || 0,
-        duration: transcript.duration || 0
-      };
-      
-      // You would call onOpenTranscript here if it was passed as a prop
-      // For now, we'll show an alert with basic info
-      const wordCount = noteForModal.word_count;
-      const confidence = Math.round((noteForModal.confidence || 0) * 100);
-      alert(`Medical Transcript Ready!\n\nWords: ${wordCount}\nConfidence: ${confidence}%\n\nGo to "📝 Transcripts" to view the full transcript and medical data.`);
-      
-    } catch (error) {
-      console.error('Error loading transcript:', error);
-      updateStatus('❌ Error loading transcript', 'error');
-    }
-  }, [lastSessionId]);
-
   return (
-    <section className="main-section">
-      {/* Enhanced Title Section */}
-      <div className="title-section">
-        <h1 className="main-title">🏥 Medical Voice Notes</h1>
-        <p className="subtitle">
-          AI-powered medical transcription with automated information extraction
+    <div className="section recording-section">
+      {/* Header */}
+      <div className="section-header">
+        <h1 className="recording-title">Medical Voice Notes</h1>
+        <p className="recording-subtitle">
+          AI-powered medical transcription with automated information extraction. 
+          Record consultations or upload existing audio files for instant transcription and medical data analysis.
         </p>
-        <div className="feature-highlights">
-          <div className="feature-item">
-            <span className="feature-icon">🤖</span>
-            <span>Medical AI Extraction</span>
-          </div>
-          <div className="feature-item">
-            <span className="feature-icon">🔒</span>
-            <span>HIPAA Compliant</span>
-          </div>
-          <div className="feature-item">
-            <span className="feature-icon">⚡</span>
-            <span>Real-time Processing</span>
-          </div>
-        </div>
       </div>
 
-      {/* Enhanced Action Buttons */}
+      {/* Action Buttons */}
       <div className="recording-actions">
-        <div className="primary-actions">
+        <div className="recording-primary-actions">
           {!isRecording && (
-            <button onClick={startRecording} className="btn btn-primary btn-lg recording-btn">
-              <span className="btn-icon">🎤</span>
-              <div className="btn-text">
-                <span className="btn-title">Start Recording</span>
-                <span className="btn-subtitle">Begin medical consultation</span>
-              </div>
+            <button onClick={startRecording} className="btn btn-primary btn-lg">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: '20px', height: '20px'}}>
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <path d="M12 19v4"/>
+                <path d="M8 23h8"/>
+              </svg>
+              Start Recording
             </button>
           )}
           
           {isRecording && (
-            <button onClick={stopRecording} className="btn btn-danger btn-lg recording-btn active">
-              <span className="btn-icon recording-pulse">⏹️</span>
-              <div className="btn-text">
-                <span className="btn-title">Stop Recording</span>
-                <span className="btn-subtitle">End consultation</span>
-              </div>
+            <button onClick={stopRecording} className="btn btn-danger btn-lg">
+              <svg viewBox="0 0 24 24" fill="currentColor" style={{width: '20px', height: '20px'}}>
+                <rect x="6" y="6" width="12" height="12" rx="2"/>
+              </svg>
+              Stop Recording
             </button>
           )}
           
           <button 
             onClick={selectFileForUpload} 
-            className="btn btn-outline btn-lg upload-btn"
+            className="btn btn-secondary btn-lg"
             disabled={isRecording}
           >
-            <span className="btn-icon">📁</span>
-            <div className="btn-text">
-              <span className="btn-title">Upload Audio</span>
-              <span className="btn-subtitle">Select existing file</span>
-            </div>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: '20px', height: '20px'}}>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14,2 14,8 20,8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            Upload Audio File
           </button>
         </div>
         
-        <div className="secondary-actions">
-          <button onClick={onShowNotes} className="btn btn-success">
-            📝 View Transcripts
+        <div className="recording-secondary-actions">
+          <button onClick={onShowNotes} className="btn btn-outline">
+            View All Transcripts
           </button>
           <button onClick={onShowSummaries} className="btn btn-outline">
-            🏥 Medical Summaries
+            Medical Summaries
           </button>
         </div>
       </div>
 
-      {/* Enhanced Timer */}
+      {/* Timer Display */}
       {isRecording && (
-        <div className="recording-status">
-          <div className="timer-container">
-            <div className="recording-indicator">
-              <div className="recording-dot"></div>
-              <span>RECORDING</span>
-            </div>
-            <div className="timer">{timer}</div>
-          </div>
-          <p className="recording-tip">
-            💡 Speak clearly and mention symptoms, medications, and patient details
-          </p>
+        <div className="timer-display">
+          {timer}
         </div>
       )}
 
-      {/* Enhanced Status Display */}
-      <div className="status-container">
-        <div className={`status-indicator ${status.type}`}>
-          <div className="status-content">
-            <div className="status-message">{status.message}</div>
-            {processingStep && (
-              <div className="processing-step">
-                Current step: {processingStep}
-              </div>
-            )}
+      {/* Status Display */}
+      <div className={`status-message ${status.type}`}>
+        <div>{status.message}</div>
+        {processingStep && (
+          <div style={{fontSize: '0.875rem', marginTop: '0.5rem', opacity: 0.8}}>
+            Current step: {processingStep}
           </div>
-          
-          {lastSessionId && (status.type === 'success' || processingStep === 'completed') && (
-            <div className="success-actions">
-              <button 
-                onClick={viewLastTranscript}
-                className="btn btn-outline btn-sm"
-              >
-                📄 View Transcript
-              </button>
-              <button 
-                onClick={onShowSummaries}
-                className="btn btn-primary btn-sm"
-              >
-                🏥 View Medical Data
-              </button>
-            </div>
-          )}
-        </div>
+        )}
+        
+        {lastSessionId && status.type === 'success' && (
+          <div className="flex gap-3 mt-4">
+            <button 
+              onClick={onShowNotes}
+              className="btn btn-sm btn-outline"
+            >
+              View Transcript
+            </button>
+            <button 
+              onClick={onShowSummaries}
+              className="btn btn-sm btn-primary"
+            >
+              View Medical Data
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Enhanced Upload Progress */}
+      {/* Upload Progress */}
       {showUploadProgress && (
         <div className="upload-progress-container">
-          <div className="progress-header">
-            <span className="progress-label">Uploading medical file...</span>
-            <span className="progress-percentage">{Math.round(uploadProgress)}%</span>
+          <div className="upload-progress-header">
+            <span>Uploading medical file...</span>
+            <span className="upload-progress-percentage">{Math.round(uploadProgress)}%</span>
           </div>
-          <div className="upload-progress">
+          <div className="progress">
             <div 
-              className="upload-progress-bar" 
+              className="progress-bar" 
               style={{ width: `${uploadProgress}%` }}
             ></div>
           </div>
@@ -521,51 +448,39 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
         style={{ display: 'none' }}
       />
 
-      {/* Enhanced File Format Info */}
-      <div className="system-info">
-        <div className="info-grid">
-          <div className="info-card">
-            <div className="info-header">
-              <span className="info-icon">🎵</span>
-              <span className="info-title">Supported Formats</span>
-            </div>
-            <div className="info-content">
-              WebM, WAV, MP3, OGG, M4A
+      {/* System Information */}
+      <div className="mt-8">
+        <div className="grid grid-cols-2 gap-6">
+          <div className="card">
+            <div className="card-content">
+              <h3 className="font-semibold text-gray-900 mb-2">Supported Formats</h3>
+              <p className="text-sm text-gray-600">WebM, WAV, MP3, OGG, M4A</p>
             </div>
           </div>
           
-          <div className="info-card">
-            <div className="info-header">
-              <span className="info-icon">📏</span>
-              <span className="info-title">File Size Limit</span>
-            </div>
-            <div className="info-content">
-              Up to 90MB per file
+          <div className="card">
+            <div className="card-content">
+              <h3 className="font-semibold text-gray-900 mb-2">File Size Limit</h3>
+              <p className="text-sm text-gray-600">Up to 90MB per file</p>
             </div>
           </div>
           
-          <div className="info-card">
-            <div className="info-header">
-              <span className="info-icon">🤖</span>
-              <span className="info-title">AI Processing</span>
-            </div>
-            <div className="info-content">
-              Medical transcription + data extraction
+          <div className="card">
+            <div className="card-content">
+              <h3 className="font-semibold text-gray-900 mb-2">AI Processing</h3>
+              <p className="text-sm text-gray-600">Medical transcription + data extraction</p>
             </div>
           </div>
           
-          <div className="info-card">
-            <div className="info-header">
-              <span className="info-icon">⚡</span>
-              <span className="info-title">Processing Time</span>
-            </div>
-            <div className="info-content">
-              ~1-2 minutes for most files
+          <div className="card">
+            <div className="card-content">
+              <h3 className="font-semibold text-gray-900 mb-2">Processing Time</h3>
+              <p className="text-sm text-gray-600">Typically 1-2 minutes</p>
             </div>
           </div>
         </div>
       </div>
-    </section>
+    </div>
   );
 };
 
