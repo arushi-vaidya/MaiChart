@@ -1,4 +1,4 @@
-
+# backend/api/medical_routes.py - FIXED VERSION
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse, FileResponse
 import logging
@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 # Create enhanced medical router
-enhanced_medical_router = APIRouter()
+medical_router = APIRouter()
 
 def get_config_dep(request: Request):
     """Dependency to get config"""
@@ -33,7 +33,7 @@ def get_mongodb_client(request: Request):
         raise HTTPException(status_code=503, detail="MongoDB not available")
     return request.app.state.mongodb_client
 
-@enhanced_medical_router.get("/medical_data/{session_id}")
+@medical_router.get("/medical_data/{session_id}")
 async def get_medical_data_enhanced(session_id: str, request: Request, config=Depends(get_config_dep)):
     """Get extracted medical data with MongoDB fallback"""
     try:
@@ -73,7 +73,7 @@ async def get_medical_data_enhanced(session_id: str, request: Request, config=De
         logger.error(f"Error getting enhanced medical data: {str(e)}")
         raise HTTPException(status_code=500, detail="Medical data retrieval failed")
 
-@enhanced_medical_router.get("/medical_alerts/{session_id}")
+@medical_router.get("/medical_alerts/{session_id}")
 async def get_medical_alerts_enhanced(session_id: str, request: Request, config=Depends(get_config_dep)):
     """Get medical alerts with MongoDB support"""
     try:
@@ -122,7 +122,7 @@ async def get_medical_alerts_enhanced(session_id: str, request: Request, config=
         logger.error(f"Error getting enhanced medical alerts: {str(e)}")
         raise HTTPException(status_code=500, detail="Medical alerts retrieval failed")
 
-@enhanced_medical_router.get("/medical_analytics/summary")
+@medical_router.get("/medical_analytics/summary")
 async def get_medical_analytics_summary(request: Request, config=Depends(get_config_dep)):
     """Get comprehensive medical analytics summary from MongoDB"""
     try:
@@ -142,7 +142,7 @@ async def get_medical_analytics_summary(request: Request, config=Depends(get_con
         logger.error(f"Error getting medical analytics: {str(e)}")
         raise HTTPException(status_code=500, detail="Medical analytics retrieval failed")
 
-@enhanced_medical_router.get("/patients/by_condition/{condition}")
+@medical_router.get("/patients/by_condition/{condition}")
 async def search_patients_by_condition(
     condition: str, 
     limit: int = 20, 
@@ -167,7 +167,7 @@ async def search_patients_by_condition(
         logger.error(f"Error searching patients by condition: {str(e)}")
         raise HTTPException(status_code=500, detail="Patient search failed")
 
-@enhanced_medical_router.get("/patients/with_allergies")
+@medical_router.get("/patients/with_allergies")
 async def get_allergy_patients(
     allergy_type: Optional[str] = None,
     request: Request = None, 
@@ -191,6 +191,39 @@ async def get_allergy_patients(
         logger.error(f"Error getting allergy patients: {str(e)}")
         raise HTTPException(status_code=500, detail="Allergy patient search failed")
 
+@medical_router.post("/trigger_medical_extraction/{session_id}")
+async def trigger_medical_extraction(session_id: str, request: Request, config=Depends(get_config_dep)):
+    """Manually trigger medical extraction for a session"""
+    try:
+        # Get the transcript first
+        storage_client = get_storage_client(request)
+        session_data = storage_client.get_session_status(session_id)
+        
+        if not session_data:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        transcript_text = session_data.get("transcript_text")
+        if not transcript_text:
+            raise HTTPException(status_code=400, detail="No transcript available for medical extraction")
+        
+        # Queue for medical extraction
+        from workers.enhanced_medical_extraction_worker import queue_for_medical_extraction
+        stream_id = queue_for_medical_extraction(storage_client.redis_client, session_id, transcript_text)
+        
+        if stream_id:
+            return JSONResponse(content={
+                "success": True,
+                "message": "Medical extraction queued successfully",
+                "stream_id": stream_id
+            })
+        else:
+            raise HTTPException(status_code=500, detail="Failed to queue medical extraction")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error triggering medical extraction: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to trigger medical extraction")
 
 def generate_medical_alerts_from_data(medical_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Generate medical alerts from extracted medical data - FIXED"""

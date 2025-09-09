@@ -1,4 +1,4 @@
-# backend/app.py - FIXED: Updated import structure
+# backend/app.py - FIXED: Updated import structure and medical routes
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -24,21 +24,14 @@ except ImportError as e:
     MongoDBClient = None
     HybridStorageClient = None
 
-# Import medical extraction routes
+# FIXED: Import medical extraction routes properly
 try:
     from api.medical_routes import medical_router
     MEDICAL_ROUTES_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    logging.warning(f"Medical routes not available: {e}")
     MEDICAL_ROUTES_AVAILABLE = False
     medical_router = None
-
-# Try to import MongoDB-specific routes
-try:
-    from api.mongodb_routes import mongodb_router
-    MONGODB_ROUTES_AVAILABLE = True
-except ImportError:
-    MONGODB_ROUTES_AVAILABLE = False
-    mongodb_router = None
 
 
 # Async context manager for startup/shutdown
@@ -102,7 +95,7 @@ async def lifespan(app: FastAPI):
     
     # Initialize medical extraction models if enabled
     enable_medical = os.getenv("ENABLE_MEDICAL_EXTRACTION", "true").lower() == "true"
-    if enable_medical and MEDICAL_ROUTES_AVAILABLE:
+    if enable_medical:
         try:
             from core.enhanced_medical_extraction_service import enhanced_medical_extractor
             logger.info("🏥 Initializing medical extraction models...")
@@ -131,8 +124,8 @@ def create_app(config_name=None):
     # Create FastAPI app with lifespan
     app = FastAPI(
         title="MaiChart - Medical Voice Notes API with MongoDB",
-        description="AI-powered medical voice note transcription with persistent MongoDB storage",
-        version="2.2.0",
+        description="AI-powered medical voice note transcription with persistent MongoDB storage and automatic medical extraction",
+        version="2.3.0",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan
@@ -167,15 +160,12 @@ def create_app(config_name=None):
     # Include API routes
     app.include_router(api_router, prefix="/api")
     
-    # Include medical routes if available
+    # FIXED: Include medical routes if available
     if MEDICAL_ROUTES_AVAILABLE and medical_router:
         app.include_router(medical_router, prefix="/api", tags=["medical"])
         logging.info("✅ Medical extraction routes enabled")
-    
-    # Include MongoDB routes if available
-    if MONGODB_ROUTES_AVAILABLE and mongodb_router:
-        app.include_router(mongodb_router, prefix="/api", tags=["mongodb"])
-        logging.info("✅ MongoDB-specific routes enabled")
+    else:
+        logging.warning("⚠️ Medical extraction routes not available")
     
     # Enhanced health check endpoint
     @app.get("/health")
@@ -196,7 +186,7 @@ def create_app(config_name=None):
         return {
             "status": "healthy",
             "service": "MaiChart Medical Transcription API",
-            "version": "2.2.0",
+            "version": "2.3.0",
             "timestamp": datetime.utcnow().isoformat(),
             "storage": {
                 "strategy": storage_strategy,
@@ -208,6 +198,7 @@ def create_app(config_name=None):
             "features": {
                 "transcription": "enabled",
                 "medical_extraction": "enabled" if os.getenv("ENABLE_MEDICAL_EXTRACTION", "true").lower() == "true" else "disabled",
+                "auto_medical_extraction": "enabled",
                 "parallel_chunking": "enabled",
                 "persistent_storage": mongodb_status not in ["disabled", "not_installed"]
             }
@@ -218,19 +209,22 @@ def create_app(config_name=None):
     async def root():
         """Root endpoint with MongoDB features"""
         storage_info = "Redis + MongoDB hybrid storage" if config_obj.ENABLE_MONGODB and MONGODB_AVAILABLE else "Redis-only storage"
+        medical_status = "enabled" if os.getenv("ENABLE_MEDICAL_EXTRACTION", "true").lower() == "true" else "disabled"
         
         return {
-            "message": "MaiChart Medical Voice Notes API with MongoDB",
-            "version": "2.2.0",
+            "message": "MaiChart Medical Voice Notes API with Automatic Medical Extraction",
+            "version": "2.3.0",
             "storage": storage_info,
+            "medical_extraction": medical_status,
             "features": [
                 "🎤 Audio transcription with AssemblyAI",
-                "🏥 Medical information extraction with OpenAI GPT-4",
+                "🏥 Automatic medical information extraction with OpenAI GPT-4",
                 "⚡ Parallel chunk processing for large files",
                 "📊 Structured FHIR-like medical data output",
                 "🚨 Medical alerts and critical information detection",
                 "💾 Persistent MongoDB storage for analytics" if config_obj.ENABLE_MONGODB and MONGODB_AVAILABLE else None,
-                "🔍 Advanced medical data querying and search" if config_obj.ENABLE_MONGODB and MONGODB_AVAILABLE else None
+                "🔍 Advanced medical data querying and search" if config_obj.ENABLE_MONGODB and MONGODB_AVAILABLE else None,
+                "🤖 Fully automated medical extraction pipeline"
             ],
             "endpoints": {
                 "docs": "/docs",
@@ -241,6 +235,8 @@ def create_app(config_name=None):
                 "status": "/api/status/{session_id}",
                 "transcript": "/api/transcript/{session_id}",
                 "medical_data": "/api/medical_data/{session_id}",
+                "medical_alerts": "/api/medical_alerts/{session_id}",
+                "trigger_extraction": "/api/trigger_medical_extraction/{session_id}",
                 "medical_analytics": "/api/medical_analytics" if config_obj.ENABLE_MONGODB and MONGODB_AVAILABLE else None,
                 "patient_search": "/api/patients/search" if config_obj.ENABLE_MONGODB and MONGODB_AVAILABLE else None
             }
@@ -304,7 +300,7 @@ def setup_logging(app: FastAPI, config_obj):
     logger.addHandler(console_handler)
     logger.setLevel(logging.INFO)
     
-    logger.info("🚀 FastAPI Medical Transcription System with MongoDB startup")
+    logger.info("🚀 FastAPI Medical Transcription System with Automatic Medical Extraction startup")
 
 
 # Create the app instance
@@ -318,12 +314,12 @@ if __name__ == "__main__":
     config_name = os.getenv("FASTAPI_ENV", "default")
     config_obj = config[config_name]
     
-    print("🚀 Starting Enhanced FastAPI Medical Transcription System with MongoDB...")
+    print("🚀 Starting Enhanced FastAPI Medical Transcription System with Automatic Medical Extraction...")
     print(f"📁 Upload folder: {config_obj.UPLOAD_FOLDER}")
     print(f"📄 Transcripts folder: {config_obj.TRANSCRIPTS_FOLDER}")
     print(f"🔧 Environment: {config_name}")
     print(f"💾 MongoDB: {'Enabled' if config_obj.ENABLE_MONGODB and MONGODB_AVAILABLE else 'Disabled'}")
-    print(f"🏥 Medical extraction: {'Enabled' if os.getenv('ENABLE_MEDICAL_EXTRACTION', 'true').lower() == 'true' else 'Disabled'}")
+    print(f"🏥 Medical extraction: {'Enabled with Auto-Queue' if os.getenv('ENABLE_MEDICAL_EXTRACTION', 'true').lower() == 'true' else 'Disabled'}")
     print(f"🌐 Server will be available at: http://{config_obj.HOST}:{config_obj.PORT}")
     
     # Run with uvicorn

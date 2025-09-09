@@ -1,8 +1,8 @@
-# backend/workers/enhanced_medical_extraction_worker.py - UPDATED for MongoDB
 #!/usr/bin/env python3
 """
-Enhanced Medical Extraction Worker with MongoDB Storage
+FIXED Enhanced Medical Extraction Worker with MongoDB Storage
 Processes completed transcripts and stores results in MongoDB
+FIXED: Proper stream configuration and error handling
 """
 
 import os
@@ -24,21 +24,29 @@ load_dotenv()
 sys.path.append(str(Path(__file__).parent.parent))
 
 from workers.base_worker import BaseWorker
-from core.mongodb_client import MongoDBClient, HybridStorageClient
+
+# Try to import MongoDB clients
+try:
+    from core.mongodb_client import MongoDBClient, HybridStorageClient
+    MONGODB_AVAILABLE = True
+except ImportError:
+    MONGODB_AVAILABLE = False
+    MongoDBClient = None
+    HybridStorageClient = None
 
 logger = logging.getLogger(__name__)
 
 
 class EnhancedMedicalExtractionWorker(BaseWorker):
     """
-    Enhanced worker with MongoDB integration for medical extraction
+    FIXED Enhanced worker with MongoDB integration for medical extraction
     Stores results in both Redis (for speed) and MongoDB (for persistence)
     """
 
     def __init__(self, config_name="default"):
         super().__init__("enhanced_medical_extraction_worker", config_name)
         
-        # Override stream configuration for medical extraction
+        # FIXED: Override stream configuration for medical extraction
         self.stream_name = "medical_extraction_queue"
         self.consumer_group = "medical_extractors"
         
@@ -51,7 +59,7 @@ class EnhancedMedicalExtractionWorker(BaseWorker):
         self.mongodb_client = None
         self.hybrid_client = None
         
-        if self.enable_mongodb:
+        if self.enable_mongodb and MONGODB_AVAILABLE:
             try:
                 mongodb_connection = os.getenv("MONGODB_CONNECTION_STRING")
                 mongodb_database = os.getenv("MONGODB_DATABASE_NAME", "maichart_medical")

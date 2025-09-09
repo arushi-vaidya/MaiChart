@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Enhanced Transcription Worker with Fixed Redis Queue Management
-Fixed: Proper message acknowledgment and consumer group handling
+Enhanced Transcription Worker with FIXED Auto Medical Extraction
+FIXED: Proper import structure and automatic medical extraction queuing
 """
 
 import os
@@ -20,7 +20,6 @@ load_dotenv()
 sys.path.append(str(Path(__file__).parent.parent))
 
 from workers.base_worker import BaseWorker
-from workers.enhanced_medical_extraction_worker import queue_for_medical_extraction
 
 # Import AssemblyAI
 try:
@@ -35,7 +34,7 @@ logger = logging.getLogger(__name__)
 class EnhancedTranscriptionWorker(BaseWorker):
     """
     Enhanced worker that handles transcription and automatically queues for medical extraction
-    FIXED: Proper Redis message acknowledgment and state management
+    FIXED: Proper auto-queuing and imports
     """
 
     def __init__(self, config_name="default", worker_type="direct"):
@@ -211,8 +210,8 @@ class EnhancedTranscriptionWorker(BaseWorker):
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return {"status": "error", "error": str(e), "text": "", "confidence": 0.0}
 
-    def queue_medical_extraction(self, session_id: str, transcript_text: str):
-        """Queue transcript for medical extraction"""
+    def auto_queue_medical_extraction(self, session_id: str, transcript_text: str) -> bool:
+        """FIXED: Automatically queue medical extraction after successful transcription"""
         try:
             if not self.enable_medical_extraction:
                 logger.info(f"⏭️ Medical extraction disabled for session {session_id}")
@@ -222,9 +221,21 @@ class EnhancedTranscriptionWorker(BaseWorker):
                 logger.info(f"⏭️ Transcript too short for medical extraction: {session_id}")
                 return False
             
-            stream_id = queue_for_medical_extraction(self.redis_client, session_id, transcript_text)
+            # Queue for medical extraction
+            extraction_data = {
+                "session_id": session_id,
+                "transcript_text": transcript_text,
+                "queued_at": datetime.utcnow().isoformat(),
+                "type": "auto_medical_extraction"
+            }
+            
+            # Add to medical extraction stream
+            medical_stream = "medical_extraction_queue"
+            stream_id = self.redis_client.add_to_stream(medical_stream, extraction_data)
+            
             if stream_id:
-                logger.info(f"🏥 Queued medical extraction for session {session_id}")
+                logger.info(f"🏥 Auto-queued medical extraction for session {session_id} -> {stream_id}")
+                
                 # Update session status to indicate medical extraction is queued
                 self.update_session_status(session_id, {
                     "medical_extraction_queued": True,
@@ -235,7 +246,7 @@ class EnhancedTranscriptionWorker(BaseWorker):
             return False
             
         except Exception as e:
-            logger.error(f"❌ Error queuing medical extraction: {e}")
+            logger.error(f"❌ Error auto-queuing medical extraction: {e}")
             return False
 
     def save_transcript(self, session_id: str, transcript_data: dict, chunk_info: dict = None) -> str:
@@ -289,7 +300,6 @@ class EnhancedTranscriptionWorker(BaseWorker):
 
     def process_message(self, message_data: dict) -> bool:
         """FIXED: Enhanced process_message with proper acknowledgment"""
-        message_id = None
         try:
             message_type = message_data.get("type", "direct_processing")
 
@@ -298,7 +308,6 @@ class EnhancedTranscriptionWorker(BaseWorker):
             else:
                 result = self._process_direct_message(message_data)
 
-            # FIXED: Always return the result properly
             return result
 
         except Exception as e:
@@ -308,7 +317,7 @@ class EnhancedTranscriptionWorker(BaseWorker):
             return False
 
     def _process_direct_message(self, message_data: dict) -> bool:
-        """FIXED: Process a direct (non-chunked) transcription message with proper error handling"""
+        """FIXED: Process a direct transcription message with auto medical extraction"""
         try:
             session_id = message_data.get("session_id")
             filepath = message_data.get("filepath")
@@ -384,7 +393,7 @@ class EnhancedTranscriptionWorker(BaseWorker):
 
                 self.update_session_status(session_id, status_update)
 
-                # NEW: Queue for medical extraction if enabled and transcript has content
+                # FIXED: Auto-queue for medical extraction if transcript has content
                 if transcript_result.get("text") and len(transcript_result["text"].strip()) > 10:
                     medical_queued = self.auto_queue_medical_extraction(session_id, transcript_result["text"])
                     if medical_queued:
@@ -494,7 +503,7 @@ class EnhancedTranscriptionWorker(BaseWorker):
                 logger.info(f"✅ Chunk {chunk_id} transcribed successfully!")
                 logger.info(f"📊 Chunk stats: {len(transcript_result['text'])} chars, {transcript_result.get('words', 0)} words")
 
-                # NEW: Check if all chunks are complete and queue medical extraction
+                # FIXED: Check if all chunks are complete and queue medical extraction
                 self._check_and_queue_chunked_medical_extraction(session_id)
 
                 return True
@@ -548,7 +557,7 @@ class EnhancedTranscriptionWorker(BaseWorker):
                 if (not session_data.get("medical_extraction_queued") and 
                     transcript_text and len(transcript_text.strip()) > 10):
                     
-                    medical_queued = self.queue_medical_extraction(session_id, transcript_text)
+                    medical_queued = self.auto_queue_medical_extraction(session_id, transcript_text)
                     if medical_queued:
                         logger.info(f"🏥 Medical extraction queued for completed chunked session {session_id}")
                         
@@ -708,7 +717,7 @@ def main():
             logger.error(f"❌ Invalid worker type: {worker_type}. Must be 'direct' or 'chunk'")
             return 1
 
-        logger.info(f"🚀 Starting Enhanced MaiChart Transcription Worker ({worker_type}) with Medical Extraction...")
+        logger.info(f"🚀 Starting Enhanced MaiChart Transcription Worker ({worker_type}) with Auto Medical Extraction...")
 
         # Validate environment variables
         if not os.getenv("ASSEMBLYAI_API_KEY"):
@@ -724,45 +733,6 @@ def main():
         import traceback
         logger.error(f"Full traceback: {traceback.format_exc()}")
         return 1
-    
-def auto_queue_medical_extraction(self, session_id: str, transcript_text: str):
-    """Automatically queue medical extraction after successful transcription"""
-    try:
-        if not self.enable_medical_extraction:
-            logger.info(f"⏭️ Medical extraction disabled for session {session_id}")
-            return False
-            
-        if not transcript_text or len(transcript_text.strip()) < 10:
-            logger.info(f"⏭️ Transcript too short for medical extraction: {session_id}")
-            return False
-        
-        # Queue for medical extraction
-        extraction_data = {
-            "session_id": session_id,
-            "transcript_text": transcript_text,
-            "queued_at": datetime.utcnow().isoformat(),
-            "type": "auto_medical_extraction"
-        }
-        
-        # Add to medical extraction stream
-        medical_stream = "medical_extraction_queue"
-        stream_id = self.redis_client.add_to_stream(medical_stream, extraction_data)
-        
-        if stream_id:
-            logger.info(f"🏥 Auto-queued medical extraction for session {session_id} -> {stream_id}")
-            
-            # Update session status to indicate medical extraction is queued
-            self.update_session_status(session_id, {
-                "medical_extraction_queued": True,
-                "medical_extraction_stream_id": stream_id,
-                "medical_extraction_queued_at": datetime.utcnow().isoformat()
-            })
-            return True
-        return False
-        
-    except Exception as e:
-        logger.error(f"❌ Error auto-queuing medical extraction: {e}")
-        return False
 
 
 if __name__ == "__main__":

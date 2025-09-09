@@ -1,7 +1,7 @@
-# backend/core/mongodb_client.py
+# backend/core/mongodb_client.py - FIXED VERSION
 """
-MongoDB Client for Medical Data Storage
-Handles all MongoDB operations for storing and retrieving medical transcription data
+FIXED MongoDB Client for Medical Data Storage
+FIXED: Single database connection, no multiple database creation
 """
 
 import os
@@ -17,38 +17,50 @@ logger = logging.getLogger(__name__)
 
 class MongoDBClient:
     """
-    MongoDB client for medical transcription data storage
-    Provides methods for storing sessions, transcripts, and medical extractions
+    FIXED MongoDB client - ensures single database usage
     """
     
     def __init__(self, connection_string=None, database_name="maichart_medical"):
         self.connection_string = connection_string or os.getenv("MONGODB_CONNECTION_STRING")
-        self.database_name = database_name
+        self.database_name = database_name or os.getenv("MONGODB_DATABASE_NAME", "maichart_medical")
         self.client = None
         self.db = None
         
         if not self.connection_string:
             raise ValueError("MongoDB connection string must be provided")
         
+        # FIXED: Ensure we don't create multiple databases
+        if self.database_name != database_name and database_name == "maichart_medical":
+            logger.info(f"Using database name from environment: {self.database_name}")
+        
         self._connect()
         self._setup_collections()
     
     def _connect(self):
-        """Connect to MongoDB and setup database"""
+        """Connect to MongoDB and setup database - FIXED to use single database"""
         try:
+            # FIXED: Ensure connection string doesn't have database name in URL
+            clean_connection_string = self.connection_string
+            if '/maichart_medical' in clean_connection_string:
+                clean_connection_string = clean_connection_string.replace('/maichart_medical', '')
+                logger.warning("⚠️ Removed database name from connection string to prevent multiple DB creation")
+            
             self.client = MongoClient(
-                self.connection_string,
-                serverSelectionTimeoutMS=10000,  # 10 second timeout
-                connectTimeoutMS=10000,
-                socketTimeoutMS=20000,
-                maxPoolSize=50
+                clean_connection_string,
+                serverSelectionTimeoutMS=int(os.getenv("MONGODB_CONNECT_TIMEOUT_MS", 10000)),
+                connectTimeoutMS=int(os.getenv("MONGODB_CONNECT_TIMEOUT_MS", 10000)),
+                socketTimeoutMS=int(os.getenv("MONGODB_SOCKET_TIMEOUT_MS", 20000)),
+                maxPoolSize=int(os.getenv("MONGODB_MAX_POOL_SIZE", 50))
             )
             
             # Test connection
             self.client.admin.command('ping')
+            
+            # FIXED: Use the specific database name from environment
             self.db = self.client[self.database_name]
             
             logger.info(f"✅ Connected to MongoDB database: {self.database_name}")
+            logger.info(f"🏥 Using single database for all medical data: {self.database_name}")
             
         except ConnectionFailure as e:
             logger.error(f"❌ Failed to connect to MongoDB: {e}")
@@ -58,9 +70,9 @@ class MongoDBClient:
             raise
     
     def _setup_collections(self):
-        """Setup collections and indexes"""
+        """Setup collections and indexes - FIXED to ensure single database"""
         try:
-            # Create indexes for better query performance
+            logger.info(f"📋 Setting up collections in database: {self.database_name}")
             
             # Sessions collection indexes
             sessions_indexes = [
@@ -71,15 +83,18 @@ class MongoDBClient:
                 IndexModel([("uploaded_at", DESCENDING), ("status", ASCENDING)])
             ]
             self.db.sessions.create_indexes(sessions_indexes)
+            logger.info("✅ Sessions collection indexes created")
             
             # Transcripts collection indexes
             transcripts_indexes = [
                 IndexModel([("session_id", ASCENDING)], unique=True),
                 IndexModel([("created_at", DESCENDING)]),
                 IndexModel([("confidence", DESCENDING)]),
-                IndexModel([("word_count", DESCENDING)])
+                IndexModel([("word_count", DESCENDING)]),
+                IndexModel([("transcript_text", "text")])  # Full text search
             ]
             self.db.transcripts.create_indexes(transcripts_indexes)
+            logger.info("✅ Transcripts collection indexes created")
             
             # Medical extractions collection indexes
             medical_indexes = [
@@ -93,17 +108,34 @@ class MongoDBClient:
                 IndexModel([("extraction_metadata.method", ASCENDING)])
             ]
             self.db.medical_extractions.create_indexes(medical_indexes)
+            logger.info("✅ Medical extractions collection indexes created")
             
             # Medical alerts collection indexes
             alerts_indexes = [
                 IndexModel([("session_id", ASCENDING)]),
                 IndexModel([("created_at", DESCENDING)]),
                 IndexModel([("priority", ASCENDING)]),
-                IndexModel([("alert_type", ASCENDING)])
+                IndexModel([("alert_type", ASCENDING)]),
+                IndexModel([("session_id", ASCENDING), ("priority", ASCENDING)])
             ]
             self.db.medical_alerts.create_indexes(alerts_indexes)
+            logger.info("✅ Medical alerts collection indexes created")
             
-            logger.info("✅ MongoDB collections and indexes setup completed")
+            # Compound indexes for analytics
+            self.db.medical_extractions.create_index([
+                ("extracted_at", DESCENDING), 
+                ("allergies", ASCENDING)
+            ])
+            self.db.medical_extractions.create_index([
+                ("patient_details.age", ASCENDING), 
+                ("chronic_diseases", ASCENDING)
+            ])
+            
+            logger.info(f"✅ All collections and indexes setup completed in database: {self.database_name}")
+            
+            # FIXED: Log which database we're actually using
+            collections = self.db.list_collection_names()
+            logger.info(f"📊 Active collections in {self.database_name}: {collections}")
             
         except Exception as e:
             logger.error(f"❌ Error setting up MongoDB collections: {e}")
@@ -113,6 +145,8 @@ class MongoDBClient:
         """Check if MongoDB connection is healthy"""
         try:
             self.client.admin.command('ping')
+            # FIXED: Also check if we can access our specific database
+            self.db.command('ping')
             return True
         except Exception as e:
             logger.error(f"❌ MongoDB health check failed: {e}")
@@ -122,14 +156,33 @@ class MongoDBClient:
         """Close MongoDB connection"""
         if self.client:
             self.client.close()
-            logger.info("📤 MongoDB connection closed")
+            logger.info(f"📤 MongoDB connection closed for database: {self.database_name}")
+    
+    def get_database_info(self) -> Dict[str, Any]:
+        """Get information about the current database - FIXED"""
+        try:
+            db_stats = self.db.command("dbStats")
+            collections = self.db.list_collection_names()
+            
+            return {
+                "database_name": self.database_name,
+                "collections": collections,
+                "collection_count": len(collections),
+                "data_size": db_stats.get("dataSize", 0),
+                "storage_size": db_stats.get("storageSize", 0),
+                "index_size": db_stats.get("indexSize", 0),
+                "document_count": db_stats.get("objects", 0)
+            }
+        except Exception as e:
+            logger.error(f"❌ Error getting database info: {e}")
+            return {"database_name": self.database_name, "error": str(e)}
     
     # ==========================================
-    # SESSION MANAGEMENT
+    # SESSION MANAGEMENT - FIXED
     # ==========================================
     
     def store_session(self, session_data: Dict[str, Any]) -> bool:
-        """Store or update session data"""
+        """Store or update session data in the correct database"""
         try:
             session_id = session_data.get("session_id")
             if not session_id:
@@ -140,7 +193,8 @@ class MongoDBClient:
             now = datetime.now(timezone.utc)
             session_data.update({
                 "updated_at": now,
-                "_created_at": session_data.get("_created_at", now)
+                "_created_at": session_data.get("_created_at", now),
+                "_database": self.database_name  # FIXED: Track which database
             })
             
             # Upsert session data
@@ -151,7 +205,7 @@ class MongoDBClient:
             )
             
             action = "updated" if result.matched_count > 0 else "created"
-            logger.info(f"✅ Session {action}: {session_id}")
+            logger.info(f"✅ Session {action} in {self.database_name}: {session_id}")
             return True
             
         except Exception as e:
@@ -159,12 +213,14 @@ class MongoDBClient:
             return False
     
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieve session data by ID"""
+        """Retrieve session data by ID from the correct database"""
         try:
             session = self.db.sessions.find_one(
                 {"session_id": session_id},
                 {"_id": 0}  # Exclude MongoDB ObjectId
             )
+            if session:
+                logger.debug(f"📖 Retrieved session from {self.database_name}: {session_id}")
             return session
         except Exception as e:
             logger.error(f"❌ Error retrieving session {session_id}: {e}")
@@ -173,7 +229,10 @@ class MongoDBClient:
     def update_session_status(self, session_id: str, updates: Dict[str, Any]) -> bool:
         """Update specific fields in session"""
         try:
-            updates["updated_at"] = datetime.now(timezone.utc)
+            updates.update({
+                "updated_at": datetime.now(timezone.utc),
+                "_database": self.database_name
+            })
             
             result = self.db.sessions.update_one(
                 {"session_id": session_id},
@@ -181,143 +240,22 @@ class MongoDBClient:
             )
             
             if result.matched_count > 0:
-                logger.debug(f"✅ Session {session_id} updated")
+                logger.debug(f"✅ Session {session_id} updated in {self.database_name}")
                 return True
             else:
-                logger.warning(f"⚠️ Session {session_id} not found for update")
+                logger.warning(f"⚠️ Session {session_id} not found for update in {self.database_name}")
                 return False
                 
         except Exception as e:
             logger.error(f"❌ Error updating session {session_id}: {e}")
             return False
     
-    def get_all_sessions(self, limit: int = 100, skip: int = 0, status_filter: str = None) -> List[Dict[str, Any]]:
-        """Get all sessions with pagination and filtering"""
-        try:
-            query = {}
-            if status_filter:
-                query["status"] = status_filter
-            
-            sessions = list(self.db.sessions.find(
-                query,
-                {"_id": 0}
-            ).sort("uploaded_at", DESCENDING).limit(limit).skip(skip))
-            
-            return sessions
-        except Exception as e:
-            logger.error(f"❌ Error retrieving sessions: {e}")
-            return []
-    
-    def delete_session(self, session_id: str) -> bool:
-        """Delete session and all related data"""
-        try:
-            # Delete from all collections
-            session_result = self.db.sessions.delete_one({"session_id": session_id})
-            transcript_result = self.db.transcripts.delete_one({"session_id": session_id})
-            medical_result = self.db.medical_extractions.delete_one({"session_id": session_id})
-            alerts_result = self.db.medical_alerts.delete_many({"session_id": session_id})
-            
-            total_deleted = (session_result.deleted_count + 
-                           transcript_result.deleted_count + 
-                           medical_result.deleted_count + 
-                           alerts_result.deleted_count)
-            
-            logger.info(f"🗑️ Deleted session {session_id}: {total_deleted} documents removed")
-            return session_result.deleted_count > 0
-            
-        except Exception as e:
-            logger.error(f"❌ Error deleting session {session_id}: {e}")
-            return False
-    
     # ==========================================
-    # TRANSCRIPT MANAGEMENT
-    # ==========================================
-    
-    def store_transcript(self, session_id: str, transcript_data: Dict[str, Any]) -> bool:
-        """Store transcript data"""
-        try:
-            now = datetime.now(timezone.utc)
-            transcript_doc = {
-                "session_id": session_id,
-                "transcript_text": transcript_data.get("text", ""),
-                "confidence": float(transcript_data.get("confidence", 0)),
-                "word_count": transcript_data.get("words", 0),
-                "duration": float(transcript_data.get("duration", 0)),
-                "processing_strategy": transcript_data.get("processing_strategy", "direct"),
-                "chunks_processed": transcript_data.get("chunks_processed", 1),
-                "created_at": now,
-                "updated_at": now
-            }
-            
-            # Add any additional metadata
-            if "warning" in transcript_data:
-                transcript_doc["warning"] = transcript_data["warning"]
-            
-            result = self.db.transcripts.update_one(
-                {"session_id": session_id},
-                {"$set": transcript_doc},
-                upsert=True
-            )
-            
-            action = "updated" if result.matched_count > 0 else "created"
-            logger.info(f"✅ Transcript {action}: {session_id}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Error storing transcript for {session_id}: {e}")
-            return False
-    
-    def get_transcript(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieve transcript by session ID"""
-        try:
-            transcript = self.db.transcripts.find_one(
-                {"session_id": session_id},
-                {"_id": 0}
-            )
-            return transcript
-        except Exception as e:
-            logger.error(f"❌ Error retrieving transcript for {session_id}: {e}")
-            return None
-    
-    def get_all_transcripts(self, limit: int = 100, skip: int = 0) -> List[Dict[str, Any]]:
-        """Get all transcripts with pagination"""
-        try:
-            transcripts = list(self.db.transcripts.find(
-                {},
-                {"_id": 0}
-            ).sort("created_at", DESCENDING).limit(limit).skip(skip))
-            
-            return transcripts
-        except Exception as e:
-            logger.error(f"❌ Error retrieving transcripts: {e}")
-            return []
-    
-    def search_transcripts(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """Search transcripts by text content"""
-        try:
-            # Create text index if it doesn't exist
-            try:
-                self.db.transcripts.create_index([("transcript_text", "text")])
-            except:
-                pass  # Index may already exist
-            
-            # Search using text index
-            results = list(self.db.transcripts.find(
-                {"$text": {"$search": query}},
-                {"_id": 0, "score": {"$meta": "textScore"}}
-            ).sort([("score", {"$meta": "textScore"})]).limit(limit))
-            
-            return results
-        except Exception as e:
-            logger.error(f"❌ Error searching transcripts: {e}")
-            return []
-    
-    # ==========================================
-    # MEDICAL EXTRACTION MANAGEMENT
+    # MEDICAL EXTRACTION MANAGEMENT - FIXED
     # ==========================================
     
     def store_medical_extraction(self, session_id: str, medical_data: Dict[str, Any]) -> bool:
-        """Store medical extraction data"""
+        """Store medical extraction data in the correct database"""
         try:
             now = datetime.now(timezone.utc)
             
@@ -325,7 +263,8 @@ class MongoDBClient:
             medical_doc = {
                 "session_id": session_id,
                 "extracted_at": now,
-                "updated_at": now
+                "updated_at": now,
+                "_database": self.database_name  # FIXED: Track database
             }
             
             # Add all medical data fields
@@ -348,7 +287,7 @@ class MongoDBClient:
             )
             
             action = "updated" if result.matched_count > 0 else "created"
-            logger.info(f"✅ Medical extraction {action}: {session_id}")
+            logger.info(f"✅ Medical extraction {action} in {self.database_name}: {session_id}")
             
             # Generate and store alerts
             self._generate_and_store_alerts(session_id, medical_data)
@@ -360,32 +299,21 @@ class MongoDBClient:
             return False
     
     def get_medical_extraction(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieve medical extraction by session ID"""
+        """Retrieve medical extraction by session ID from correct database"""
         try:
             medical_data = self.db.medical_extractions.find_one(
                 {"session_id": session_id},
                 {"_id": 0}
             )
+            if medical_data:
+                logger.debug(f"📖 Retrieved medical data from {self.database_name}: {session_id}")
             return medical_data
         except Exception as e:
             logger.error(f"❌ Error retrieving medical extraction for {session_id}: {e}")
             return None
     
-    def get_all_medical_extractions(self, limit: int = 100, skip: int = 0) -> List[Dict[str, Any]]:
-        """Get all medical extractions with pagination"""
-        try:
-            extractions = list(self.db.medical_extractions.find(
-                {},
-                {"_id": 0}
-            ).sort("extracted_at", DESCENDING).limit(limit).skip(skip))
-            
-            return extractions
-        except Exception as e:
-            logger.error(f"❌ Error retrieving medical extractions: {e}")
-            return []
-    
     def _generate_and_store_alerts(self, session_id: str, medical_data: Dict[str, Any]):
-        """Generate and store medical alerts based on extracted data"""
+        """Generate and store medical alerts in the correct database"""
         try:
             alerts = []
             now = datetime.now(timezone.utc)
@@ -401,7 +329,8 @@ class MongoDBClient:
                     "message": f"Patient has {len(allergies)} known allergies",
                     "details": allergies,
                     "action_required": "Verify before prescribing medications",
-                    "created_at": now
+                    "created_at": now,
+                    "_database": self.database_name
                 })
             
             # High severity symptoms
@@ -409,7 +338,7 @@ class MongoDBClient:
             high_severity_complaints = []
             for complaint in complaint_details:
                 severity = complaint.get("severity", "")
-                if ("high" in severity.lower() or 
+                if isinstance(severity, str) and ("high" in severity.lower() or 
                     any(num in severity for num in ["8", "9", "10"]) or
                     "severe" in severity.lower()):
                     high_severity_complaints.append(complaint)
@@ -423,7 +352,8 @@ class MongoDBClient:
                     "message": f"{len(high_severity_complaints)} high-severity complaints identified",
                     "details": [c.get("complaint", "Unknown") for c in high_severity_complaints],
                     "action_required": "Immediate medical attention may be required",
-                    "created_at": now
+                    "created_at": now,
+                    "_database": self.database_name
                 })
             
             # Multiple chronic diseases
@@ -437,7 +367,8 @@ class MongoDBClient:
                     "message": f"Patient has {len(chronic_diseases)} chronic conditions",
                     "details": chronic_diseases,
                     "action_required": "Consider drug interactions and comprehensive care plan",
-                    "created_at": now
+                    "created_at": now,
+                    "_database": self.database_name
                 })
             
             # Store alerts if any were generated
@@ -447,18 +378,18 @@ class MongoDBClient:
                 
                 # Insert new alerts
                 self.db.medical_alerts.insert_many(alerts)
-                logger.info(f"✅ Generated {len(alerts)} medical alerts for {session_id}")
+                logger.info(f"✅ Generated {len(alerts)} medical alerts in {self.database_name} for {session_id}")
             
         except Exception as e:
             logger.error(f"❌ Error generating alerts for {session_id}: {e}")
     
     def get_medical_alerts(self, session_id: str) -> List[Dict[str, Any]]:
-        """Get medical alerts for a session"""
+        """Get medical alerts for a session from correct database"""
         try:
             alerts = list(self.db.medical_alerts.find(
                 {"session_id": session_id},
                 {"_id": 0}
-            ).sort("priority_order", ASCENDING))
+            ).sort("created_at", DESCENDING))
             
             # Add priority ordering for sorting
             priority_map = {"critical": 1, "high": 2, "medium": 3, "low": 4}
@@ -471,13 +402,13 @@ class MongoDBClient:
             return []
     
     # ==========================================
-    # ANALYTICS AND REPORTING
+    # ANALYTICS AND REPORTING - FIXED
     # ==========================================
     
     def get_medical_statistics(self) -> Dict[str, Any]:
-        """Get comprehensive medical extraction statistics"""
+        """Get comprehensive medical extraction statistics from correct database"""
         try:
-            stats = {}
+            stats = {"database_name": self.database_name}
             
             # Total counts
             stats["total_sessions"] = self.db.sessions.count_documents({})
@@ -540,14 +471,15 @@ class MongoDBClient:
             avg_conf = list(self.db.transcripts.aggregate(confidence_pipeline))
             stats["average_confidence"] = round(avg_conf[0]["avg_confidence"], 3) if avg_conf else 0
             
+            logger.info(f"📊 Generated statistics for database: {self.database_name}")
             return stats
             
         except Exception as e:
             logger.error(f"❌ Error getting medical statistics: {e}")
-            return {}
+            return {"database_name": self.database_name, "error": str(e)}
     
     def search_patients_by_condition(self, condition: str, limit: int = 20) -> List[Dict[str, Any]]:
-        """Search patients by medical condition"""
+        """Search patients by medical condition in correct database"""
         try:
             query = {
                 "$or": [
@@ -568,7 +500,7 @@ class MongoDBClient:
             return []
     
     def get_patients_with_allergies(self, allergy: str = None) -> List[Dict[str, Any]]:
-        """Get patients with specific allergy or all patients with allergies"""
+        """Get patients with specific allergy or all patients with allergies from correct database"""
         try:
             if allergy:
                 query = {"allergies": {"$regex": allergy, "$options": "i"}}
@@ -586,27 +518,42 @@ class MongoDBClient:
             return []
 
 
-# Example usage and initialization
+# FIXED: Factory function with proper database name handling
 def get_mongodb_client() -> MongoDBClient:
-    """Factory function to create MongoDB client instance"""
+    """Factory function to create MongoDB client instance with consistent database name"""
     try:
-        client = MongoDBClient()
+        # FIXED: Always use the same database name from environment
+        database_name = os.getenv("MONGODB_DATABASE_NAME", "maichart_medical")
+        connection_string = os.getenv("MONGODB_CONNECTION_STRING")
+        
+        if not connection_string:
+            raise ValueError("MONGODB_CONNECTION_STRING environment variable is required")
+        
+        client = MongoDBClient(
+            connection_string=connection_string,
+            database_name=database_name
+        )
+        logger.info(f"✅ Created MongoDB client for database: {database_name}")
         return client
     except Exception as e:
         logger.error(f"❌ Failed to create MongoDB client: {e}")
         raise
 
 
-# Integration with existing Redis client
+# FIXED: Integration with existing Redis client
 class HybridStorageClient:
     """
-    Hybrid storage client that uses both Redis (for real-time operations) 
-    and MongoDB (for persistent storage)
+    FIXED Hybrid storage client that uses both Redis (for real-time operations) 
+    and MongoDB (for persistent storage) - ensures single database usage
     """
     
     def __init__(self, redis_client, mongodb_client):
         self.redis_client = redis_client
         self.mongodb_client = mongodb_client
+        
+        # FIXED: Log which database we're using
+        db_info = self.mongodb_client.get_database_info()
+        logger.info(f"🔄 Hybrid storage initialized with database: {db_info.get('database_name')}")
     
     def store_session_data(self, session_id: str, session_data: Dict[str, Any]):
         """Store session data in both Redis and MongoDB"""
@@ -660,6 +607,7 @@ class HybridStorageClient:
             mongo_data.pop("extracted_at", None)
             mongo_data.pop("updated_at", None)
             mongo_data.pop("session_id", None)
+            mongo_data.pop("_database", None)  # FIXED: Remove database tracking field
             return mongo_data
         
         return None
