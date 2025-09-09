@@ -193,7 +193,7 @@ async def get_allergy_patients(
 
 
 def generate_medical_alerts_from_data(medical_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Generate medical alerts from extracted medical data"""
+    """Generate medical alerts from extracted medical data - FIXED"""
     alerts = []
     
     try:
@@ -213,11 +213,14 @@ def generate_medical_alerts_from_data(medical_data: Dict[str, Any]) -> List[Dict
         complaint_details = medical_data.get("chief_complaint_details", [])
         high_severity_complaints = []
         for complaint in complaint_details:
-            severity = complaint.get("severity", "")
-            if ("high" in severity.lower() or 
-                any(num in severity for num in ["8", "9", "10"]) or
-                "severe" in severity.lower()):
-                high_severity_complaints.append(complaint)
+            # FIXED: Handle None values properly
+            severity = complaint.get("severity") or ""
+            if isinstance(severity, str):  # FIXED: Check if severity is string
+                severity_lower = severity.lower()
+                if ("high" in severity_lower or 
+                    any(num in severity for num in ["8", "9", "10"]) or
+                    "severe" in severity_lower):
+                    high_severity_complaints.append(complaint)
         
         if high_severity_complaints:
             alerts.append({

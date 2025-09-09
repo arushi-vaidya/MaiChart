@@ -386,9 +386,9 @@ class EnhancedTranscriptionWorker(BaseWorker):
 
                 # NEW: Queue for medical extraction if enabled and transcript has content
                 if transcript_result.get("text") and len(transcript_result["text"].strip()) > 10:
-                    medical_queued = self.queue_medical_extraction(session_id, transcript_result["text"])
+                    medical_queued = self.auto_queue_medical_extraction(session_id, transcript_result["text"])
                     if medical_queued:
-                        logger.info(f"🏥 Medical extraction queued for session {session_id}")
+                        logger.info(f"🏥 Medical extraction auto-queued for session {session_id}")
                     else:
                         logger.info(f"⏭️ Medical extraction not queued for session {session_id}")
 
@@ -724,6 +724,45 @@ def main():
         import traceback
         logger.error(f"Full traceback: {traceback.format_exc()}")
         return 1
+    
+def auto_queue_medical_extraction(self, session_id: str, transcript_text: str):
+    """Automatically queue medical extraction after successful transcription"""
+    try:
+        if not self.enable_medical_extraction:
+            logger.info(f"⏭️ Medical extraction disabled for session {session_id}")
+            return False
+            
+        if not transcript_text or len(transcript_text.strip()) < 10:
+            logger.info(f"⏭️ Transcript too short for medical extraction: {session_id}")
+            return False
+        
+        # Queue for medical extraction
+        extraction_data = {
+            "session_id": session_id,
+            "transcript_text": transcript_text,
+            "queued_at": datetime.utcnow().isoformat(),
+            "type": "auto_medical_extraction"
+        }
+        
+        # Add to medical extraction stream
+        medical_stream = "medical_extraction_queue"
+        stream_id = self.redis_client.add_to_stream(medical_stream, extraction_data)
+        
+        if stream_id:
+            logger.info(f"🏥 Auto-queued medical extraction for session {session_id} -> {stream_id}")
+            
+            # Update session status to indicate medical extraction is queued
+            self.update_session_status(session_id, {
+                "medical_extraction_queued": True,
+                "medical_extraction_stream_id": stream_id,
+                "medical_extraction_queued_at": datetime.utcnow().isoformat()
+            })
+            return True
+        return False
+        
+    except Exception as e:
+        logger.error(f"❌ Error auto-queuing medical extraction: {e}")
+        return False
 
 
 if __name__ == "__main__":

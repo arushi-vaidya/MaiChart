@@ -138,13 +138,13 @@ class BaseWorker(ABC):
                 for msg in pending:
                     message_id = msg["message_id"]
                     try:
-                        # Claim the message
+                        # FIXED: Use message_ids (list) instead of message_id
                         claimed = self.redis_client.client.xclaim(
                             self.stream_name,
                             self.consumer_group,
                             self.consumer_name,
                             min_idle_time=0,
-                            message_id=message_id
+                            message_ids=[message_id]  # FIXED: List instead of single ID
                         )
                         
                         if claimed:
@@ -156,6 +156,13 @@ class BaseWorker(ABC):
                             
                     except Exception as e:
                         logger.warning(f"⚠️ Could not clean up message {message_id}: {e}")
+                        # Still try to acknowledge it to prevent blocking
+                        try:
+                            self.redis_client.acknowledge_message(
+                                self.stream_name, self.consumer_group, message_id
+                            )
+                        except:
+                            pass
                         
                 logger.info(f"✅ Consumer group cleanup completed")
             else:

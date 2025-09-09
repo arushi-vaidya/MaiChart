@@ -380,12 +380,18 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
         </div>
         
         <div className="recording-secondary-actions">
-          <button onClick={onShowNotes} className="btn btn-outline">
-            View All Transcripts
-          </button>
-          <button onClick={onShowSummaries} className="btn btn-outline">
-            Medical Summaries
-          </button>
+          <button 
+              onClick={onShowNotes}
+              className="btn btn-sm btn-outline"
+            >
+              View Transcript
+            </button>
+            <button 
+              onClick={onShowNotes}
+              className="btn btn-sm btn-primary"
+            >
+              View Medical Data
+            </button>
         </div>
       </div>
 
