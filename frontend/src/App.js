@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import AudioRecorder from './components/AudioRecorder';
 import NotesSection from './components/NotesSection';
 import MedicalSummariesSection from './components/MedicalSummariesSection';
-import TranscriptModal from './components/TranscriptModal';
+import EnhancedTranscriptModal from './components/EnhancedTranscriptModal';
 import './styles/App.css';
 
 function App() {
@@ -95,7 +95,7 @@ function App() {
       </div>
 
       {/* Modal for transcript viewing */}
-      <TranscriptModal 
+      <EnhancedTranscriptModal
         isOpen={modalData.isOpen}
         note={modalData.note}
         onClose={closeTranscriptModal}

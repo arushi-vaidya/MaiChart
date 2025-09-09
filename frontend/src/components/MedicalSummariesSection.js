@@ -168,23 +168,42 @@ const MedicalSummariesSection = ({ onShowRecording, onShowNotes, onOpenTranscrip
     }
   }, []);
 
-  // Create summary card
-  const createSummaryCard = useCallback((summary) => {
+  // Get severity indicator
+  const getSeverityIndicator = useCallback((summary) => {
+    const alerts = summary.medical_alerts || [];
+    const criticalCount = alerts.filter(a => a.priority === 'critical').length;
+    const highCount = alerts.filter(a => a.priority === 'high').length;
+    
+    if (criticalCount > 0) return { level: 'critical', count: criticalCount, label: 'Critical' };
+    if (highCount > 0) return { level: 'high', count: highCount, label: 'High Priority' };
+    if (alerts.length > 0) return { level: 'medium', count: alerts.length, label: 'Medium' };
+    return { level: 'low', count: 0, label: 'Normal' };
+  }, []);
+
+  // Create enhanced medical card
+  const createEnhancedMedicalCard = useCallback((summary) => {
     const date = new Date(summary.created_at || summary.timestamp);
     const isExpanded = expandedSummaries.has(summary.session_id);
     const medicalData = summary.medical_data;
     const alerts = summary.medical_alerts || [];
+    const severity = getSeverityIndicator(summary);
     
-    // Count important medical information
+    // Extract key medical information
     const patientName = medicalData.patient_details?.name || 'Unknown Patient';
     const patientAge = medicalData.patient_details?.age || '';
+    const patientGender = medicalData.patient_details?.gender || '';
+    
     const complaintsCount = medicalData.chief_complaints?.length || 0;
     const symptomsCount = medicalData.symptoms?.length || 0;
     const medicationsCount = medicalData.drug_history?.length || 0;
     const allergiesCount = medicalData.allergies?.length || 0;
-    const diseasesCount = medicalData.possible_diseases?.length || 0;
+    const chronicCount = medicalData.chronic_diseases?.length || 0;
+    const diagnosesCount = medicalData.possible_diseases?.length || 0;
     
-    // Get highest priority alert
+    // Get primary chief complaint
+    const primaryComplaint = medicalData.chief_complaints?.[0] || 'No chief complaint recorded';
+    
+    // Get critical alerts
     const criticalAlerts = alerts.filter(alert => 
       alert.priority === 'critical' || alert.priority === 'high'
     );
@@ -192,127 +211,214 @@ const MedicalSummariesSection = ({ onShowRecording, onShowNotes, onOpenTranscrip
     return (
       <div 
         key={summary.session_id}
-        className={`summary-card ${criticalAlerts.length > 0 ? 'has-alerts' : ''}`}
+        className={`summary-card ${criticalAlerts.length > 0 ? 'has-alerts' : ''} ${severity.level === 'critical' ? 'critical-case' : ''}`}
         onClick={() => onOpenTranscript(summary)}
       >
+        {/* Card Header with Patient Info */}
         <div className="summary-header">
-          <div className="summary-patient">
-            <h3 className="patient-name">{patientName}</h3>
-            {patientAge && <span className="patient-age">Age: {patientAge}</span>}
-            <div className="summary-date">{formatDate(date)}</div>
+          <div className="patient-info">
+            <div className="patient-header">
+              <h3 className="patient-name">{patientName}</h3>
+              <div className="severity-indicator">
+                <span className={`severity-badge ${severity.level}`}>
+                  {severity.level === 'critical' && '🚨'}
+                  {severity.level === 'high' && '⚠️'}
+                  {severity.level === 'medium' && 'ℹ️'}
+                  {severity.level === 'low' && '✅'}
+                  {severity.label}
+                </span>
+              </div>
+            </div>
+            <div className="patient-meta">
+              {patientAge && <span className="patient-age">Age: {patientAge}</span>}
+              {patientGender && <span className="patient-gender">{patientGender}</span>}
+              <span className="visit-date">{formatDate(date)}</span>
+            </div>
           </div>
           <div className="summary-actions">
             <button 
-              className="action-btn" 
+              className="action-btn download" 
               onClick={(e) => downloadSummary(summary.session_id, e)} 
               title="Download Medical Summary"
             >
               📋
             </button>
             <button 
-              className="action-btn" 
+              className="action-btn expand" 
               onClick={(e) => toggleExpand(summary.session_id, e)} 
-              title={isExpanded ? "Collapse" : "Expand"}
+              title={isExpanded ? "Collapse Details" : "Expand Details"}
             >
               {isExpanded ? '📖' : '📄'}
             </button>
           </div>
         </div>
 
+        {/* Primary Complaint */}
+        <div className="primary-complaint">
+          <div className="complaint-header">
+            <span className="complaint-icon">🩺</span>
+            <span className="complaint-label">Chief Complaint</span>
+          </div>
+          <p className="complaint-text">{primaryComplaint}</p>
+        </div>
+
         {/* Critical Alerts Banner */}
         {criticalAlerts.length > 0 && (
-          <div className="alerts-banner">
-            {criticalAlerts.map((alert, index) => (
-              <div key={index} className={`alert-badge ${getPriorityClass(alert.priority)}`}>
-                {alert.title}
+          <div className="critical-alerts-banner">
+            {criticalAlerts.slice(0, 2).map((alert, index) => (
+              <div key={index} className={`critical-alert ${getPriorityClass(alert.priority)}`}>
+                <span className="alert-icon">
+                  {alert.priority === 'critical' ? '🚨' : '⚠️'}
+                </span>
+                <span className="alert-text">{alert.title.replace(/[🚨⚠️]/g, '').trim()}</span>
               </div>
             ))}
+            {criticalAlerts.length > 2 && (
+              <div className="more-alerts">
+                +{criticalAlerts.length - 2} more alerts
+              </div>
+            )}
           </div>
         )}
 
-        {/* Medical Stats */}
-        <div className="medical-stats">
-          {complaintsCount > 0 && (
-            <div className="stat-item">
-              <span className="stat-icon">🩺</span>
-              <span>{complaintsCount} Complaints</span>
-            </div>
-          )}
-          {symptomsCount > 0 && (
-            <div className="stat-item">
-              <span className="stat-icon">🤒</span>
-              <span>{symptomsCount} Symptoms</span>
-            </div>
-          )}
-          {medicationsCount > 0 && (
-            <div className="stat-item">
-              <span className="stat-icon">💊</span>
-              <span>{medicationsCount} Medications</span>
-            </div>
-          )}
-          {allergiesCount > 0 && (
-            <div className="stat-item critical">
-              <span className="stat-icon">⚠️</span>
-              <span>{allergiesCount} Allergies</span>
-            </div>
-          )}
-          {diseasesCount > 0 && (
-            <div className="stat-item">
-              <span className="stat-icon">🔍</span>
-              <span>{diseasesCount} Diagnoses</span>
-            </div>
-          )}
-        </div>
-
-        {/* Expanded Details */}
-        {isExpanded && (
-          <div className="summary-details">
-            {/* Chief Complaints */}
-            {medicalData.chief_complaints && medicalData.chief_complaints.length > 0 && (
-              <div className="detail-section">
-                <h4>Chief Complaints</h4>
-                <ul className="detail-list">
-                  {medicalData.chief_complaints.map((complaint, index) => (
-                    <li key={index}>{complaint}</li>
-                  ))}
-                </ul>
+        {/* Medical Overview Stats */}
+        <div className="medical-overview">
+          <div className="overview-grid">
+            {symptomsCount > 0 && (
+              <div className="overview-stat">
+                <span className="overview-icon">🤒</span>
+                <div className="overview-info">
+                  <span className="overview-number">{symptomsCount}</span>
+                  <span className="overview-label">Symptoms</span>
+                </div>
               </div>
             )}
+            
+            {medicationsCount > 0 && (
+              <div className="overview-stat">
+                <span className="overview-icon">💊</span>
+                <div className="overview-info">
+                  <span className="overview-number">{medicationsCount}</span>
+                  <span className="overview-label">Medications</span>
+                </div>
+              </div>
+            )}
+            
+            {allergiesCount > 0 && (
+              <div className="overview-stat critical">
+                <span className="overview-icon">⚠️</span>
+                <div className="overview-info">
+                  <span className="overview-number">{allergiesCount}</span>
+                  <span className="overview-label">Allergies</span>
+                </div>
+              </div>
+            )}
+            
+            {chronicCount > 0 && (
+              <div className="overview-stat">
+                <span className="overview-icon">🏥</span>
+                <div className="overview-info">
+                  <span className="overview-number">{chronicCount}</span>
+                  <span className="overview-label">Chronic</span>
+                </div>
+              </div>
+            )}
+            
+            {diagnosesCount > 0 && (
+              <div className="overview-stat">
+                <span className="overview-icon">🔍</span>
+                <div className="overview-info">
+                  <span className="overview-number">{diagnosesCount}</span>
+                  <span className="overview-label">Diagnoses</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
-            {/* Key Symptoms */}
+        {/* Expanded Medical Details */}
+        {isExpanded && (
+          <div className="expanded-medical-details">
+            {/* Key Symptoms Section */}
             {medicalData.symptoms && medicalData.symptoms.length > 0 && (
-              <div className="detail-section">
-                <h4>Key Symptoms</h4>
-                <div className="symptoms-grid">
-                  {medicalData.symptoms.slice(0, 6).map((symptom, index) => (
-                    <span key={index} className="symptom-tag">{symptom}</span>
+              <div className="medical-detail-section">
+                <div className="section-header">
+                  <h4 className="section-title">
+                    <span className="section-icon">🤒</span>
+                    Reported Symptoms
+                  </h4>
+                  <span className="section-count">{medicalData.symptoms.length}</span>
+                </div>
+                <div className="symptoms-display">
+                  {medicalData.symptoms.slice(0, 8).map((symptom, index) => (
+                    <span key={index} className="symptom-pill">{symptom}</span>
                   ))}
-                  {medicalData.symptoms.length > 6 && (
-                    <span className="symptom-tag more">+{medicalData.symptoms.length - 6} more</span>
+                  {medicalData.symptoms.length > 8 && (
+                    <span className="symptom-pill more-symptoms">
+                      +{medicalData.symptoms.length - 8} more
+                    </span>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Critical: Allergies */}
+            {/* Critical Allergies Section */}
             {medicalData.allergies && medicalData.allergies.length > 0 && (
-              <div className="detail-section critical">
-                <h4>⚠️ ALLERGIES</h4>
-                <ul className="detail-list critical-list">
+              <div className="medical-detail-section critical-section">
+                <div className="section-header">
+                  <h4 className="section-title critical">
+                    <span className="section-icon">⚠️</span>
+                    ALLERGIES - CRITICAL
+                  </h4>
+                  <span className="section-count critical">{medicalData.allergies.length}</span>
+                </div>
+                <div className="allergies-display">
                   {medicalData.allergies.map((allergy, index) => (
-                    <li key={index} className="critical-item">{allergy}</li>
+                    <div key={index} className="allergy-item">
+                      <span className="allergy-icon">⚠️</span>
+                      <span className="allergy-name">{allergy}</span>
+                    </div>
                   ))}
-                </ul>
+                </div>
               </div>
             )}
 
             {/* Current Medications */}
             {medicalData.drug_history && medicalData.drug_history.length > 0 && (
-              <div className="detail-section">
-                <h4>Current Medications</h4>
-                <div className="medications-grid">
+              <div className="medical-detail-section">
+                <div className="section-header">
+                  <h4 className="section-title">
+                    <span className="section-icon">💊</span>
+                    Current Medications
+                  </h4>
+                  <span className="section-count">{medicalData.drug_history.length}</span>
+                </div>
+                <div className="medications-display">
                   {medicalData.drug_history.map((medication, index) => (
-                    <span key={index} className="medication-tag">{medication}</span>
+                    <div key={index} className="medication-item">
+                      <span className="medication-icon">💊</span>
+                      <span className="medication-name">{medication}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Chronic Conditions */}
+            {medicalData.chronic_diseases && medicalData.chronic_diseases.length > 0 && (
+              <div className="medical-detail-section">
+                <div className="section-header">
+                  <h4 className="section-title">
+                    <span className="section-icon">🏥</span>
+                    Chronic Conditions
+                  </h4>
+                  <span className="section-count">{medicalData.chronic_diseases.length}</span>
+                </div>
+                <div className="chronic-diseases-display">
+                  {medicalData.chronic_diseases.map((disease, index) => (
+                    <div key={index} className="chronic-disease-item">
+                      <span className="disease-name">{disease}</span>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -320,27 +426,124 @@ const MedicalSummariesSection = ({ onShowRecording, onShowNotes, onOpenTranscrip
 
             {/* Possible Diagnoses */}
             {medicalData.possible_diseases && medicalData.possible_diseases.length > 0 && (
-              <div className="detail-section">
-                <h4>Possible Diagnoses</h4>
-                <ul className="detail-list">
+              <div className="medical-detail-section">
+                <div className="section-header">
+                  <h4 className="section-title">
+                    <span className="section-icon">🔍</span>
+                    Possible Diagnoses
+                  </h4>
+                  <span className="section-count">{medicalData.possible_diseases.length}</span>
+                </div>
+                <div className="diagnoses-display">
                   {medicalData.possible_diseases.map((disease, index) => (
-                    <li key={index}>{disease}</li>
+                    <div key={index} className="diagnosis-item">
+                      <span className="diagnosis-icon">🔍</span>
+                      <span className="diagnosis-name">{disease}</span>
+                    </div>
                   ))}
-                </ul>
+                </div>
+              </div>
+            )}
+
+            {/* Chief Complaint Details */}
+            {medicalData.chief_complaint_details && medicalData.chief_complaint_details.length > 0 && (
+              <div className="medical-detail-section">
+                <div className="section-header">
+                  <h4 className="section-title">
+                    <span className="section-icon">📋</span>
+                    Complaint Details
+                  </h4>
+                </div>
+                <div className="complaint-details-display">
+                  {medicalData.chief_complaint_details.map((detail, index) => (
+                    <div key={index} className="complaint-detail-item">
+                      <div className="complaint-detail-header">
+                        <span className="complaint-detail-name">{detail.complaint}</span>
+                        {detail.severity && (
+                          <span className={`severity-tag ${
+                            detail.severity.toLowerCase().includes('high') || 
+                            detail.severity.includes('8') || detail.severity.includes('9') || detail.severity.includes('10')
+                            ? 'high-severity' : 'normal-severity'
+                          }`}>
+                            {detail.severity}
+                          </span>
+                        )}
+                      </div>
+                      <div className="complaint-detail-meta">
+                        {detail.location && (
+                          <span className="detail-meta">📍 {detail.location}</span>
+                        )}
+                        {detail.duration && (
+                          <span className="detail-meta">⏱️ {detail.duration}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Family History */}
+            {medicalData.family_history && medicalData.family_history.length > 0 && (
+              <div className="medical-detail-section">
+                <div className="section-header">
+                  <h4 className="section-title">
+                    <span className="section-icon">👨‍👩‍👧‍👦</span>
+                    Family History
+                  </h4>
+                </div>
+                <div className="family-history-display">
+                  {medicalData.family_history.map((history, index) => (
+                    <div key={index} className="family-history-item">
+                      {history}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
         )}
 
+        {/* Card Footer */}
         <div className="summary-footer">
-          <span className="session-id">ID: {summary.session_id.substring(0, 8)}...</span>
-          <span className="extraction-method">
-            {medicalData.extraction_metadata?.method || 'AI Extracted'}
-          </span>
+          <div className="footer-left">
+            <span className="session-id">ID: {summary.session_id.substring(0, 8)}...</span>
+            <span className="extraction-method">
+              {medicalData.extraction_metadata?.method?.includes('OpenAI') ? '🤖 AI Extracted' : '🔧 Processed'}
+            </span>
+          </div>
+          <div className="footer-right">
+            {medicalData.extraction_metadata?.processing_time_seconds && (
+              <span className="processing-time">
+                ⚡ {medicalData.extraction_metadata.processing_time_seconds}s
+              </span>
+            )}
+          </div>
         </div>
       </div>
     );
-  }, [expandedSummaries, formatDate, getPriorityClass, onOpenTranscript, downloadSummary, toggleExpand]);
+  }, [expandedSummaries, formatDate, getPriorityClass, getSeverityIndicator, onOpenTranscript, downloadSummary, toggleExpand]);
+
+  // Calculate summary statistics
+  const calculateStats = useCallback(() => {
+    const totalSummaries = filteredSummaries.length;
+    const criticalCases = filteredSummaries.filter(s => 
+      s.medical_alerts?.some(a => a.priority === 'critical' || a.priority === 'high')
+    ).length;
+    const patientsWithAllergies = filteredSummaries.filter(s => 
+      s.medical_data.allergies && s.medical_data.allergies.length > 0
+    ).length;
+    const patientsOnMedications = filteredSummaries.filter(s => 
+      s.medical_data.drug_history && s.medical_data.drug_history.length > 0
+    ).length;
+
+    return {
+      total: totalSummaries,
+      critical: criticalCases,
+      allergies: patientsWithAllergies,
+      medications: patientsOnMedications
+    };
+  }, [filteredSummaries]);
 
   if (loading) {
     return (
@@ -348,10 +551,15 @@ const MedicalSummariesSection = ({ onShowRecording, onShowNotes, onOpenTranscrip
         <div className="summaries-header">
           <h2 className="summaries-title">🏥 Medical Summaries</h2>
         </div>
-        <div className="loading-state">Loading medical summaries...</div>
+        <div className="loading-state">
+          <div className="loading-spinner"></div>
+          <p>Loading medical summaries...</p>
+        </div>
       </section>
     );
   }
+
+  const stats = calculateStats();
 
   return (
     <section className="summaries-section">
@@ -369,7 +577,7 @@ const MedicalSummariesSection = ({ onShowRecording, onShowNotes, onOpenTranscrip
             🔄 Refresh
           </button>
           <button className="btn btn-outline" onClick={onShowNotes}>
-            📝 View Transcripts
+            📝 Transcripts
           </button>
           <button className="btn btn-primary" onClick={onShowRecording}>
             ➕ New Recording
@@ -377,13 +585,13 @@ const MedicalSummariesSection = ({ onShowRecording, onShowNotes, onOpenTranscrip
         </div>
       </div>
 
-      {/* Filter Chips */}
+      {/* Enhanced Filter Chips */}
       <div className="filter-chips">
         {[
-          { key: 'all', label: 'All Summaries', icon: '📋' },
-          { key: 'critical', label: 'Critical Alerts', icon: '🚨' },
-          { key: 'allergies', label: 'Has Allergies', icon: '⚠️' },
-          { key: 'medications', label: 'On Medications', icon: '💊' },
+          { key: 'all', label: 'All Patients', icon: '👥', count: stats.total },
+          { key: 'critical', label: 'Critical Cases', icon: '🚨', count: stats.critical },
+          { key: 'allergies', label: 'Has Allergies', icon: '⚠️', count: stats.allergies },
+          { key: 'medications', label: 'On Medications', icon: '💊', count: stats.medications },
           { key: 'chronic', label: 'Chronic Conditions', icon: '🏥' }
         ].map(filter => (
           <div 
@@ -392,67 +600,59 @@ const MedicalSummariesSection = ({ onShowRecording, onShowNotes, onOpenTranscrip
             onClick={() => handleFilter(filter.key)}
           >
             <span className="filter-icon">{filter.icon}</span>
-            {filter.label}
+            <span>{filter.label}</span>
+            {filter.count !== undefined && (
+              <span className="filter-count">{filter.count}</span>
+            )}
           </div>
         ))}
       </div>
 
-      {/* Summaries Grid */}
+      {/* Enhanced Summaries Grid */}
       {filteredSummaries.length > 0 ? (
-        <div className="summaries-grid">
-          {filteredSummaries.map(createSummaryCard)}
-        </div>
+        <>
+          <div className="summaries-grid">
+            {filteredSummaries.map(createEnhancedMedicalCard)}
+          </div>
+
+          {/* Enhanced Stats Footer */}
+          <div className="summaries-stats">
+            <div className="stats-grid">
+              <div className="stat-card">
+                <span className="stat-number">{stats.total}</span>
+                <span className="stat-label">Total Patients</span>
+              </div>
+              <div className="stat-card">
+                <span className="stat-number">{stats.critical}</span>
+                <span className="stat-label">Critical Cases</span>
+              </div>
+              <div className="stat-card">
+                <span className="stat-number">{stats.allergies}</span>
+                <span className="stat-label">With Allergies</span>
+              </div>
+              <div className="stat-card">
+                <span className="stat-number">{stats.medications}</span>
+                <span className="stat-label">On Medications</span>
+              </div>
+            </div>
+          </div>
+        </>
       ) : (
         <div className="empty-state">
           <div className="empty-state-icon">🏥</div>
           <h3>No Medical Summaries Available</h3>
           <p>
             Medical summaries will appear here after audio recordings are transcribed 
-            and processed by our AI medical extraction system.
+            and processed by our AI medical extraction system. Start by recording a 
+            patient consultation or uploading an existing audio file.
           </p>
           <div className="empty-state-actions">
-            <button className="btn btn-primary" onClick={onShowRecording}>
+            <button className="btn btn-primary btn-lg" onClick={onShowRecording}>
               🎤 Start Recording
             </button>
             <button className="btn btn-outline" onClick={onShowNotes}>
               📝 View Transcripts
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Stats Footer */}
-      {filteredSummaries.length > 0 && (
-        <div className="summaries-stats">
-          <div className="stats-grid">
-            <div className="stat-card">
-              <span className="stat-number">{filteredSummaries.length}</span>
-              <span className="stat-label">Medical Summaries</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-number">
-                {filteredSummaries.filter(s => s.medical_alerts?.some(a => 
-                  a.priority === 'critical' || a.priority === 'high'
-                )).length}
-              </span>
-              <span className="stat-label">Critical Cases</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-number">
-                {filteredSummaries.filter(s => 
-                  s.medical_data.allergies && s.medical_data.allergies.length > 0
-                ).length}
-              </span>
-              <span className="stat-label">Patients with Allergies</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-number">
-                {filteredSummaries.filter(s => 
-                  s.medical_data.drug_history && s.medical_data.drug_history.length > 0
-                ).length}
-              </span>
-              <span className="stat-label">On Medications</span>
-            </div>
           </div>
         </div>
       )}
