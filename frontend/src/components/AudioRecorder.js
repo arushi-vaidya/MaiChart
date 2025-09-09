@@ -455,37 +455,14 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
       />
 
       {/* System Information */}
-      <div className="mt-8">
-        <div className="grid grid-cols-2 gap-6">
-          <div className="card">
-            <div className="card-content">
-              <h3 className="font-semibold text-gray-900 mb-2">Supported Formats</h3>
-              <p className="text-sm text-gray-600">WebM, WAV, MP3, OGG, M4A</p>
-            </div>
-          </div>
+      
+
           
-          <div className="card">
-            <div className="card-content">
-              <h3 className="font-semibold text-gray-900 mb-2">File Size Limit</h3>
-              <p className="text-sm text-gray-600">Up to 90MB per file</p>
-            </div>
-          </div>
           
-          <div className="card">
-            <div className="card-content">
-              <h3 className="font-semibold text-gray-900 mb-2">AI Processing</h3>
-              <p className="text-sm text-gray-600">Medical transcription + data extraction</p>
-            </div>
-          </div>
           
-          <div className="card">
-            <div className="card-content">
-              <h3 className="font-semibold text-gray-900 mb-2">Processing Time</h3>
-              <p className="text-sm text-gray-600">Typically 1-2 minutes</p>
-            </div>
-          </div>
-        </div>
-      </div>
+          
+          
+         
     </div>
   );
 };
