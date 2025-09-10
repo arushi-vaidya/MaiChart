@@ -1,7 +1,8 @@
+// components/AudioRecorder.js - Updated to integrate with existing API service
 import React, { useState, useRef, useCallback } from 'react';
 import apiService from '../services/api';
 
-const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
+const AudioRecorder = ({ onRecordingComplete }) => {
   // State management
   const [isRecording, setIsRecording] = useState(false);
   const [timer, setTimer] = useState('00:00');
@@ -113,6 +114,10 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
         if (status === 'completed') {
           updateStatus('Transcription completed successfully!', 'success');
           setLastSessionId(sessionId);
+          // Trigger notes refresh
+          if (onRecordingComplete) {
+            onRecordingComplete();
+          }
           return;
         } else if (status === 'error') {
           updateStatus(`Processing failed: ${statusData.error}`, 'error');
@@ -144,7 +149,7 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
     };
 
     checkStatus();
-  }, [updateStatus]);
+  }, [updateStatus, onRecordingComplete]);
 
   // Upload audio file
   const uploadAudioFile = useCallback(async (file) => {
@@ -330,22 +335,22 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
   }, []);
 
   return (
-    <div className="section recording-section">
+    <div className="recorder-section">
       {/* Header */}
       <div className="section-header">
-        <h1 className="recording-title">Medical Voice Notes</h1>
-        <p className="recording-subtitle">
+        <h2>Medical Voice Notes</h2>
+        <p>
           AI-powered medical transcription with automated information extraction. 
           Record consultations or upload existing audio files for instant transcription and medical data analysis.
         </p>
       </div>
 
       {/* Action Buttons */}
-      <div className="recording-actions">
-        <div className="recording-primary-actions">
+      <div className="recorder-controls">
+        <div className="primary-actions">
           {!isRecording && (
             <button onClick={startRecording} className="btn btn-primary btn-lg">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: '20px', height: '20px'}}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
                 <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
                 <path d="M12 19v4"/>
@@ -357,7 +362,7 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
           
           {isRecording && (
             <button onClick={stopRecording} className="btn btn-danger btn-lg">
-              <svg viewBox="0 0 24 24" fill="currentColor" style={{width: '20px', height: '20px'}}>
+              <svg viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="6" width="12" height="12" rx="2"/>
               </svg>
               Stop Recording
@@ -369,7 +374,7 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
             className="btn btn-secondary btn-lg"
             disabled={isRecording}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: '20px', height: '20px'}}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
               <polyline points="14,2 14,8 20,8"/>
               <line x1="16" y1="13" x2="8" y2="13"/>
@@ -377,21 +382,6 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
             </svg>
             Upload Audio File
           </button>
-        </div>
-        
-        <div className="recording-secondary-actions">
-          <button 
-              onClick={onShowNotes}
-              className="btn btn-sm btn-outline"
-            >
-              View Transcript
-            </button>
-            <button 
-              onClick={onShowNotes}
-              className="btn btn-sm btn-primary"
-            >
-              View Medical Data
-            </button>
         </div>
       </div>
 
@@ -410,35 +400,18 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
             Current step: {processingStep}
           </div>
         )}
-        
-        {lastSessionId && status.type === 'success' && (
-          <div className="flex gap-3 mt-4">
-            <button 
-              onClick={onShowNotes}
-              className="btn btn-sm btn-outline"
-            >
-              View Transcript
-            </button>
-            <button 
-              onClick={onShowSummaries}
-              className="btn btn-sm btn-primary"
-            >
-              View Medical Data
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Upload Progress */}
       {showUploadProgress && (
-        <div className="upload-progress-container">
-          <div className="upload-progress-header">
+        <div className="upload-progress">
+          <div className="progress-header">
             <span>Uploading medical file...</span>
-            <span className="upload-progress-percentage">{Math.round(uploadProgress)}%</span>
+            <span className="progress-percentage">{Math.round(uploadProgress)}%</span>
           </div>
-          <div className="progress">
+          <div className="progress-bar">
             <div 
-              className="progress-bar" 
+              className="progress-fill" 
               style={{ width: `${uploadProgress}%` }}
             ></div>
           </div>
@@ -453,16 +426,6 @@ const AudioRecorder = ({ onShowNotes, onShowSummaries }) => {
         onChange={handleFileUpload}
         style={{ display: 'none' }}
       />
-
-      {/* System Information */}
-      
-
-          
-          
-          
-          
-          
-         
     </div>
   );
 };
