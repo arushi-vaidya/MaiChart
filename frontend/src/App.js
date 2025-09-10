@@ -27,8 +27,8 @@ function App() {
   const navigationItems = [
     {
       key: 'recording',
-      title: 'Record',
-      description: 'Create new voice note',
+      title: 'Voice Notes',
+      description: 'Record medical consultations',
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="nav-icon">
           <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -40,11 +40,14 @@ function App() {
     },
     {
       key: 'notes',
-      title: 'Patient Notes',
+      title: 'Patient Records',
       description: 'View transcripts & medical data',
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="nav-icon">
-          <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14,2 14,8 20,8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
         </svg>
       )
     }
@@ -52,61 +55,69 @@ function App() {
 
   return (
     <div className="app">
-      {/* Left Navigation Sidebar */}
-      <nav className="sidebar">
-        <div className="sidebar-header">
-          <div className="logo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="logo-icon">
-              <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-            </svg>
-            <span className="logo-text">MaiChart</span>
-          </div>
-          <p className="logo-subtitle">Medical Voice Notes</p>
-        </div>
-
-        <div className="nav-items">
-          {navigationItems.map((item) => (
-            <button
-              key={item.key}
-              className={`nav-item ${currentSection === item.key ? 'active' : ''}`}
-              onClick={() => {
-                if (item.key === 'recording') showRecordingSection();
-                else if (item.key === 'notes') showNotesSection();
+      {/* Top Header Bar - Medical Dashboard Style */}
+      <header className="top-header">
+        <div className="header-left">
+          <div className="logo-container">
+            <img 
+              src="/logo-icon.png" 
+              alt="MaiChart Logo" 
+              className="logo-image"
+              onError={(e) => {
+                // Fallback to SVG if image doesn't exist
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'block';
               }}
-            >
-              <div className="nav-item-icon">
-                {item.icon}
-              </div>
-              <div className="nav-item-content">
-                <h3 className="nav-item-title">{item.title}</h3>
-                <p className="nav-item-description">{item.description}</p>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        <div className="sidebar-footer">
-          <div className="status-indicator">
-            <div className="status-dot"></div>
-            <span>System Active</span>
+            />
+            <div className="logo-fallback" style={{display: 'none'}}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="logo-svg">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+              </svg>
+            </div>
           </div>
         </div>
-      </nav>
+
+        {/* Navigation Tabs */}
+        <nav className="header-nav">
+          <div className="nav-tabs">
+            {navigationItems.map((item) => (
+              <button
+                key={item.key}
+                className={`nav-tab ${currentSection === item.key ? 'active' : ''}`}
+                onClick={() => {
+                  if (item.key === 'recording') showRecordingSection();
+                  else if (item.key === 'notes') showNotesSection();
+                }}
+              >
+                <div className="nav-tab-icon">
+                  {item.icon}
+                </div>
+                <div className="nav-tab-content">
+                  <span className="nav-tab-title">{item.title}</span>
+                  <span className="nav-tab-description">{item.description}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </nav>
+      </header>
 
       {/* Main Content Area */}
       <main className="main-content">
-        {currentSection === 'recording' && (
-          <AudioRecorder 
-            onShowNotes={showNotesSection}
-          />
-        )}
-        
-        {currentSection === 'notes' && (
-          <UnifiedNotesSection 
-            onShowRecording={showRecordingSection}
-            onOpenTranscript={openTranscriptModal}
-          />
-        )}
+        <div className="content-container">
+          {currentSection === 'recording' && (
+            <AudioRecorder 
+              onShowNotes={showNotesSection}
+            />
+          )}
+          
+          {currentSection === 'notes' && (
+            <UnifiedNotesSection 
+              onShowRecording={showRecordingSection}
+              onOpenTranscript={openTranscriptModal}
+            />
+          )}
+        </div>
       </main>
 
       {/* Modal for transcript viewing */}
