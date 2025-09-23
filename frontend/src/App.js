@@ -5,6 +5,9 @@ import UnifiedNotesSection from './components/UnifiedNotesSection';
 import Sidebar from './components/Sidebar';
 import TopHeader from './components/TopHeader';
 import './styles/App.css';
+// In your main App.js or wherever you want the recorder
+import StreamingRecorder from './components/StreamingRecorder';
+
 
 const App = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Start closed on mobile, open on desktop
@@ -32,6 +35,7 @@ const App = () => {
         
         <div className="content">
           <AudioRecorder onRecordingComplete={triggerNotesRefresh} />
+          <StreamingRecorder />
           <UnifiedNotesSection refreshTrigger={refreshNotes} />
         </div>
       </div>

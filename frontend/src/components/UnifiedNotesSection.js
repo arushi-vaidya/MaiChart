@@ -1,24 +1,26 @@
+// Enhanced UnifiedNotesSection.js with Medical Information Display
 import React, { useState, useEffect, useCallback } from 'react';
 import apiService from '../services/api';
 
-const UnifiedNotesSection = ({ onShowRecording, onOpenTranscript }) => {
+const UnifiedNotesSection = ({ refreshTrigger }) => {
   const [notes, setNotes] = useState([]);
   const [filteredNotes, setFilteredNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [currentFilter, setCurrentFilter] = useState('all');
-  const [expandedCards, setExpandedCards] = useState(new Set());
+  const [selectedNote, setSelectedNote] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [activeTab, setActiveTab] = useState('transcript');
+  const [generatingActions, setGeneratingActions] = useState(false);
+  const [followUpActions, setFollowUpActions] = useState([]);
 
   // Load notes with medical data
   const loadNotes = useCallback(async () => {
     try {
       setLoading(true);
-      
-      // Get all notes first
       const notesResponse = await apiService.getAllNotes();
       const notesData = notesResponse.notes || [];
       
-      // Get medical data for each note
+      // Enrich with medical data
       const enrichedNotes = await Promise.all(
         notesData.map(async (note) => {
           try {
@@ -34,7 +36,6 @@ const UnifiedNotesSection = ({ onShowRecording, onOpenTranscript }) => {
               has_medical_data: !!medicalResponse?.medical_data
             };
           } catch (error) {
-            console.error(`Error loading medical data for ${note.session_id}:`, error);
             return {
               ...note,
               medical_data: null,
@@ -56,10 +57,9 @@ const UnifiedNotesSection = ({ onShowRecording, onOpenTranscript }) => {
     }
   }, []);
 
-  // Load notes on component mount
   useEffect(() => {
     loadNotes();
-  }, [loadNotes]);
+  }, [loadNotes, refreshTrigger]);
 
   // Handle search
   const handleSearch = useCallback((query) => {
@@ -71,75 +71,99 @@ const UnifiedNotesSection = ({ onShowRecording, onOpenTranscript }) => {
 
     const filtered = notes.filter(note => {
       const searchText = query.toLowerCase();
+      const patientName = note.medical_data?.patient_details?.name?.toLowerCase() || '';
+      const symptoms = note.medical_data?.symptoms?.join(' ').toLowerCase() || '';
+      const conditions = note.medical_data?.possible_diseases?.join(' ').toLowerCase() || '';
+      
       return (
         (note.text && note.text.toLowerCase().includes(searchText)) ||
-        note.session_id.toLowerCase().includes(searchText) ||
-        (note.medical_data?.patient_details?.name && 
-         note.medical_data.patient_details.name.toLowerCase().includes(searchText)) ||
-        (note.medical_data?.chief_complaints && 
-         note.medical_data.chief_complaints.some(complaint => 
-           complaint.toLowerCase().includes(searchText))) ||
-        (note.medical_data?.symptoms && 
-         note.medical_data.symptoms.some(symptom => 
-           symptom.toLowerCase().includes(searchText)))
+        patientName.includes(searchText) ||
+        symptoms.includes(searchText) ||
+        conditions.includes(searchText) ||
+        note.session_id.toLowerCase().includes(searchText)
       );
     });
     setFilteredNotes(filtered);
   }, [notes]);
 
-  // Handle filter
-  const handleFilter = useCallback((filter) => {
-    setCurrentFilter(filter);
-    let filtered = [...notes];
-
-    switch (filter) {
-      case 'today':
-        const today = new Date().toDateString();
-        filtered = filtered.filter(note => {
-          const noteDate = new Date(note.created_at || note.timestamp);
-          return noteDate.toDateString() === today;
-        });
-        break;
-      case 'critical':
-        filtered = filtered.filter(note => 
-          note.medical_alerts && note.medical_alerts.some(alert => 
-            alert.priority === 'critical' || alert.priority === 'high'
-          )
-        );
-        break;
-      case 'with-medical':
-        filtered = filtered.filter(note => note.has_medical_data);
-        break;
-      case 'high-confidence':
-        filtered = filtered.filter(note => (note.confidence || 0) >= 0.8);
-        break;
-      default:
-        // 'all' - no filtering
-        break;
-    }
-
-    setFilteredNotes(filtered);
-  }, [notes]);
-
-  // Toggle card expansion
-  const toggleExpand = useCallback((sessionId) => {
-    const newExpanded = new Set(expandedCards);
-    if (newExpanded.has(sessionId)) {
-      newExpanded.delete(sessionId);
-    } else {
-      newExpanded.add(sessionId);
-    }
-    setExpandedCards(newExpanded);
-  }, [expandedCards]);
-
-  // Download note
-  const downloadNote = useCallback(async (sessionId, event) => {
-    event.stopPropagation();
+  // Generate follow-up actions using AI
+  const generateFollowUpActions = async (transcript, medicalData) => {
     try {
-      await apiService.downloadTranscript(sessionId);
+      setGeneratingActions(true);
+      
+      // Simulate AI generation - in real implementation, this would call your backend
+      // For now, generate based on medical data
+      const actions = [];
+      
+      if (medicalData?.allergies && medicalData.allergies.length > 0) {
+        actions.push({
+          priority: 'critical',
+          action: 'Update allergy information in patient chart',
+          details: `Ensure allergies (${medicalData.allergies.join(', ')}) are prominently displayed in EHR`,
+          category: 'Safety'
+        });
+      }
+      
+      if (medicalData?.symptoms && medicalData.symptoms.length > 0) {
+        actions.push({
+          priority: 'high',
+          action: 'Schedule diagnostic tests',
+          details: `Based on symptoms: ${medicalData.symptoms.slice(0, 3).join(', ')}`,
+          category: 'Diagnostics'
+        });
+      }
+      
+      if (medicalData?.drug_history && medicalData.drug_history.length > 0) {
+        actions.push({
+          priority: 'medium',
+          action: 'Review current medications',
+          details: 'Check for drug interactions and dosage optimization',
+          category: 'Medication Management'
+        });
+      }
+      
+      if (medicalData?.possible_diseases && medicalData.possible_diseases.length > 0) {
+        actions.push({
+          priority: 'high',
+          action: 'Consider differential diagnosis',
+          details: `Evaluate: ${medicalData.possible_diseases.slice(0, 2).join(', ')}`,
+          category: 'Clinical Assessment'
+        });
+      }
+      
+      actions.push({
+        priority: 'medium',
+        action: 'Schedule follow-up appointment',
+        details: 'Monitor progress and treatment response in 2-4 weeks',
+        category: 'Care Coordination'
+      });
+      
+      setFollowUpActions(actions);
     } catch (error) {
-      console.error('Error downloading note:', error);
+      console.error('Error generating follow-up actions:', error);
+      setFollowUpActions([]);
+    } finally {
+      setGeneratingActions(false);
     }
+  };
+
+  // Format date for display
+  const formatDate = useCallback((date) => {
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }, []);
+
+  // Get confidence level
+  const getConfidenceLevel = useCallback((confidence) => {
+    const conf = confidence || 0;
+    if (conf >= 0.8) return 'high';
+    if (conf >= 0.6) return 'medium';
+    return 'low';
   }, []);
 
   // Delete note
@@ -161,76 +185,142 @@ const UnifiedNotesSection = ({ onShowRecording, onOpenTranscript }) => {
     }
   }, [notes]);
 
-  // Format date for display
-  const formatDate = useCallback((date) => {
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }, []);
-
-  // Get confidence display
-  const getConfidenceLevel = useCallback((confidence) => {
-    const conf = confidence || 0;
-    if (conf >= 0.8) return 'high';
-    if (conf >= 0.6) return 'medium';
-    return 'low';
-  }, []);
-
-  // Get severity indicator
-  const getSeverityIndicator = useCallback((note) => {
-    const alerts = note.medical_alerts || [];
-    const criticalCount = alerts.filter(a => a.priority === 'critical').length;
-    const highCount = alerts.filter(a => a.priority === 'high').length;
+  // Open modal with full details
+  const openNoteModal = (note) => {
+    setSelectedNote(note);
+    setShowModal(true);
+    setActiveTab('transcript');
+    setFollowUpActions([]);
     
-    if (criticalCount > 0) return { level: 'critical', count: criticalCount, label: 'Critical' };
-    if (highCount > 0) return { level: 'high', count: highCount, label: 'High Risk' };
-    if (alerts.length > 0) return { level: 'medium', count: alerts.length, label: 'Attention' };
-    return { level: 'normal', count: 0, label: 'Normal' };
-  }, []);
+    // Generate follow-up actions if medical data is available
+    if (note.medical_data) {
+      generateFollowUpActions(note.text, note.medical_data);
+    }
+  };
 
-  // Generate medical summary for card display
-  const generateMedicalSummary = useCallback((medicalData) => {
-    if (!medicalData) return null;
+  // Download medical summary
+  const downloadMedicalSummary = (note) => {
+    const ehrSummary = generateEHRSummary(note);
+    const blob = new Blob([ehrSummary], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `medical_summary_${note.session_id.substring(0, 8)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
-    const symptoms = medicalData.symptoms?.slice(0, 3) || [];
-    const medications = medicalData.drug_history?.slice(0, 2) || [];
-    const allergies = medicalData.allergies || [];
-    const conditions = medicalData.chronic_diseases?.slice(0, 2) || [];
+  // Generate EHR-formatted summary
+  const generateEHRSummary = (note) => {
+    const medicalData = note.medical_data;
+    const date = new Date(note.created_at || note.timestamp);
     
-    return {
-      symptoms,
-      medications, 
-      allergies,
-      conditions,
-      hasData: symptoms.length > 0 || medications.length > 0 || allergies.length > 0 || conditions.length > 0
-    };
-  }, []);
+    return `
+ELECTRONIC HEALTH RECORD SUMMARY
+=====================================
 
-  // Calculate stats
-  const calculateStats = useCallback(() => {
-    const total = filteredNotes.length;
-    const withMedical = filteredNotes.filter(note => note.has_medical_data).length;
-    const critical = filteredNotes.filter(note => 
-      note.medical_alerts?.some(a => a.priority === 'critical' || a.priority === 'high')
-    ).length;
-    const today = new Date().toDateString();
-    const todayNotes = filteredNotes.filter(note => {
-      const noteDate = new Date(note.created_at || note.timestamp);
-      return noteDate.toDateString() === today;
-    }).length;
+PATIENT ENCOUNTER SUMMARY
+Date of Service: ${formatDate(date)}
+Session ID: ${note.session_id}
+Provider: AI Medical Transcription System
+Documentation Type: Voice Note Transcription
 
-    return { total, withMedical, critical, today: todayNotes };
-  }, [filteredNotes]);
+PATIENT DEMOGRAPHICS
+${medicalData?.patient_details ? `
+Name: ${medicalData.patient_details.name || 'Not specified'}
+Age: ${medicalData.patient_details.age || 'Not specified'}
+Gender: ${medicalData.patient_details.gender || 'Not specified'}
+Marital Status: ${medicalData.patient_details.marital_status || 'Not specified'}
+Address: ${medicalData.patient_details.residence || 'Not specified'}
+` : 'Patient demographics not extracted from transcript'}
 
-  const stats = calculateStats();
+CHIEF COMPLAINT(S)
+${medicalData?.chief_complaints && medicalData.chief_complaints.length > 0 
+  ? medicalData.chief_complaints.map((complaint, index) => `${index + 1}. ${complaint}`).join('\n')
+  : 'No chief complaints documented'}
+
+HISTORY OF PRESENT ILLNESS
+${medicalData?.chief_complaint_details && medicalData.chief_complaint_details.length > 0
+  ? medicalData.chief_complaint_details.map(detail => 
+    `• ${detail.complaint || 'Complaint'}: ${detail.location ? `Located at ${detail.location}, ` : ''}${detail.severity ? `Severity ${detail.severity}, ` : ''}${detail.duration ? `Duration ${detail.duration}` : ''}`
+  ).join('\n')
+  : 'Detailed complaint information not available'}
+
+REVIEW OF SYSTEMS
+Current Symptoms:
+${medicalData?.symptoms && medicalData.symptoms.length > 0
+  ? medicalData.symptoms.map((symptom, index) => `${index + 1}. ${symptom}`).join('\n')
+  : 'No specific symptoms documented'}
+
+PAST MEDICAL HISTORY
+${medicalData?.past_history && medicalData.past_history.length > 0
+  ? medicalData.past_history.map((history, index) => `${index + 1}. ${history}`).join('\n')
+  : 'No significant past medical history documented'}
+
+CHRONIC CONDITIONS
+${medicalData?.chronic_diseases && medicalData.chronic_diseases.length > 0
+  ? medicalData.chronic_diseases.map((disease, index) => `${index + 1}. ${disease}`).join('\n')
+  : 'No chronic conditions documented'}
+
+CURRENT MEDICATIONS
+${medicalData?.drug_history && medicalData.drug_history.length > 0
+  ? medicalData.drug_history.map((medication, index) => `${index + 1}. ${medication}`).join('\n')
+  : 'No current medications documented'}
+
+ALLERGIES AND ADVERSE REACTIONS
+${medicalData?.allergies && medicalData.allergies.length > 0
+  ? '*** CRITICAL ALERT *** \n' + medicalData.allergies.map((allergy, index) => `${index + 1}. ${allergy}`).join('\n')
+  : 'No known allergies (NKDA)'}
+
+FAMILY HISTORY
+${medicalData?.family_history && medicalData.family_history.length > 0
+  ? medicalData.family_history.map((history, index) => `${index + 1}. ${history}`).join('\n')
+  : 'Family history not documented'}
+
+SOCIAL HISTORY
+${medicalData?.lifestyle && medicalData.lifestyle.length > 0
+  ? medicalData.lifestyle.map(lifestyle => 
+    `• ${lifestyle.habit || 'Habit'}: ${lifestyle.frequency || 'Frequency not specified'}${lifestyle.duration ? ` for ${lifestyle.duration}` : ''}`
+  ).join('\n')
+  : 'Social history not documented'}
+
+ASSESSMENT AND PLAN
+Possible Diagnoses for Consideration:
+${medicalData?.possible_diseases && medicalData.possible_diseases.length > 0
+  ? medicalData.possible_diseases.map((disease, index) => `${index + 1}. ${disease}`).join('\n')
+  : 'Differential diagnosis pending further evaluation'}
+
+COMPLETE TRANSCRIPT
+=====================================
+${note.text || 'Transcript not available'}
+
+QUALITY METRICS
+=====================================
+Transcription Confidence: ${Math.round((note.confidence || 0) * 100)}%
+Word Count: ${note.text ? note.text.split(' ').length : 0}
+Audio Duration: ${note.duration ? `${Math.round(note.duration)} seconds` : 'Not available'}
+Processing Strategy: ${note.processing_strategy || 'Standard'}
+
+AI EXTRACTION METADATA
+${medicalData?.extraction_metadata ? `
+Method: ${medicalData.extraction_metadata.method || 'Not specified'}
+Processing Time: ${medicalData.extraction_metadata.processing_time_seconds || 'Not specified'} seconds
+Timestamp: ${medicalData.extraction_metadata.timestamp || 'Not specified'}
+` : 'Extraction metadata not available'}
+
+=====================================
+Document generated by MaiChart Medical AI System
+This summary is generated from AI analysis and should be reviewed by qualified medical personnel.
+All medical decisions should be made by licensed healthcare providers.
+=====================================
+`;
+  };
 
   if (loading) {
     return (
-      <div className="unified-notes-section">
+      <div className="notes-section">
         <div className="loading-state">
           <div className="loading-spinner"></div>
           <h3>Loading Patient Notes...</h3>
@@ -241,11 +331,11 @@ const UnifiedNotesSection = ({ onShowRecording, onOpenTranscript }) => {
   }
 
   return (
-    <div className="unified-notes-section">
-      {/* Modern Header */}
+    <div className="notes-section">
+      {/* Header */}
       <div className="notes-header">
         <div className="header-content">
-          <div className="header-title">
+          <div className="header-left">
             <h1>Patient Notes</h1>
             <p>AI-powered medical insights and transcriptions</p>
           </div>
@@ -259,18 +349,11 @@ const UnifiedNotesSection = ({ onShowRecording, onOpenTranscript }) => {
               </svg>
               Refresh
             </button>
-            <button className="btn btn-primary" onClick={onShowRecording}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-              </svg>
-              New Recording
-            </button>
           </div>
         </div>
 
-        {/* Search and Stats Bar */}
-        <div className="search-stats-bar">
+        {/* Search Bar */}
+        <div className="search-bar">
           <div className="search-container">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="search-icon">
               <circle cx="11" cy="11" r="8"/>
@@ -278,143 +361,71 @@ const UnifiedNotesSection = ({ onShowRecording, onOpenTranscript }) => {
             </svg>
             <input
               type="text"
-              placeholder="Search by patient, symptoms, medications, conditions..."
+              placeholder="Search by patient name, symptoms, conditions..."
               value={searchQuery}
               onChange={(e) => handleSearch(e.target.value)}
               className="search-input"
             />
           </div>
-          <div className="quick-stats">
-            <div className="stat-item">
-              <span className="stat-number">{stats.total}</span>
-              <span className="stat-label">Total Notes</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-number">{stats.withMedical}</span>
-              <span className="stat-label">AI Analyzed</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-number critical">{stats.critical}</span>
-              <span className="stat-label">Critical Cases</span>
-            </div>
+          <div className="notes-stats">
+            <span className="stat">{filteredNotes.length} Notes</span>
+            <span className="stat">{notes.filter(n => n.has_medical_data).length} AI Analyzed</span>
           </div>
-        </div>
-
-        {/* Filter Pills */}
-        <div className="filter-pills">
-          {[
-            { key: 'all', label: 'All Notes', count: stats.total },
-            { key: 'today', label: 'Today', count: stats.today },
-            { key: 'critical', label: 'Critical Cases', count: stats.critical },
-            { key: 'with-medical', label: 'AI Analyzed', count: stats.withMedical },
-            { key: 'high-confidence', label: 'High Quality' }
-          ].map(filter => (
-            <button
-              key={filter.key}
-              className={`filter-pill ${currentFilter === filter.key ? 'active' : ''}`}
-              onClick={() => handleFilter(filter.key)}
-            >
-              <span>{filter.label}</span>
-              {filter.count !== undefined && filter.count > 0 && (
-                <span className="filter-count">{filter.count}</span>
-              )}
-            </button>
-          ))}
         </div>
       </div>
 
-      {/* Enhanced Notes Grid */}
+      {/* Enhanced Medical Notes Grid */}
       {filteredNotes.length > 0 ? (
-        <div className="notes-grid">
+        <div className="medical-notes-grid">
           {filteredNotes.map((note) => {
             const date = new Date(note.created_at || note.timestamp);
             const confidence = note.confidence || 0;
             const confidenceLevel = getConfidenceLevel(confidence);
-            const severity = getSeverityIndicator(note);
-            const isExpanded = expandedCards.has(note.session_id);
-            const wordCount = note.text ? note.text.split(' ').length : 0;
-            const preview = note.text ? note.text.substring(0, 150) + '...' : 'No transcript available';
-            
-            // Medical data extraction
             const medicalData = note.medical_data;
-            const patientName = medicalData?.patient_details?.name || 'Unknown Patient';
-            const patientAge = medicalData?.patient_details?.age || '';
-            const primaryComplaint = medicalData?.chief_complaints?.[0] || '';
-            const medicalSummary = generateMedicalSummary(medicalData);
-
+            const patientDetails = medicalData?.patient_details || {};
+            const hasAlerts = note.medical_alerts && note.medical_alerts.some(alert => 
+              alert.priority === 'critical' || alert.priority === 'high'
+            );
+            
             return (
               <div 
                 key={note.session_id}
-                className={`note-card ${severity.level} ${isExpanded ? 'expanded' : ''}`}
-                onClick={() => onOpenTranscript(note)}
+                className={`medical-note-card ${hasAlerts ? 'has-alerts' : ''}`}
               >
-                {/* Enhanced Card Header */}
-                <div className="card-header">
+                {/* Patient Header */}
+                <div className="patient-header">
                   <div className="patient-info">
                     <div className="patient-avatar">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                        <circle cx="12" cy="7" r="4"/>
-                      </svg>
+                      {patientDetails.name ? patientDetails.name.charAt(0).toUpperCase() : 'P'}
                     </div>
                     <div className="patient-details">
-                      <h3 className="patient-name">{patientName}</h3>
+                      <h3 className="patient-name">
+                        {patientDetails.name || 'Unknown Patient'}
+                      </h3>
                       <div className="patient-meta">
-                        {patientAge && <span className="age">Age {patientAge}</span>}
-                        <span className="visit-date">{formatDate(date)}</span>
+                        {patientDetails.age && <span className="age">{patientDetails.age} years</span>}
+                        {patientDetails.gender && <span className="gender">{patientDetails.gender}</span>}
+                        {patientDetails.marital_status && <span className="marital">{patientDetails.marital_status}</span>}
                       </div>
+                      <div className="visit-date">{formatDate(date)}</div>
                     </div>
                   </div>
                   
-                  <div className="card-indicators">
-                    <div className={`confidence-badge ${confidenceLevel}`}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M9 12l2 2 4-4"/>
-                        <circle cx="12" cy="12" r="9"/>
-                      </svg>
-                      {Math.round(confidence * 100)}%
-                    </div>
-                    <div className={`severity-badge ${severity.level}`}>
-                      {severity.level === 'critical' && '🚨'}
-                      {severity.level === 'high' && '⚠️'}
-                      {severity.level === 'medium' && 'ℹ️'}
-                      {severity.level === 'normal' && '✅'}
-                      <span>{severity.label}</span>
-                    </div>
-                  </div>
-
                   <div className="card-actions">
                     <button 
-                      className="action-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleExpand(note.session_id);
-                      }}
-                      title={isExpanded ? "Collapse" : "Expand Details"}
+                      className="action-btn view-btn"
+                      onClick={() => openNoteModal(note)}
+                      title="View Full Medical Record"
                     >
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        {isExpanded ? (
-                          <path d="M18 15l-6-6-6 6"/>
-                        ) : (
-                          <path d="M6 9l6 6 6-6"/>
-                        )}
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
                       </svg>
                     </button>
                     <button 
-                      className="action-btn"
-                      onClick={(e) => downloadNote(note.session_id, e)}
-                      title="Download"
-                    >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="7 10 12 15 17 10"/>
-                        <line x1="12" y1="15" x2="12" y2="3"/>
-                      </svg>
-                    </button>
-                    <button 
-                      className="action-btn danger"
+                      className="action-btn delete-btn"
                       onClick={(e) => deleteNote(note.session_id, e)}
-                      title="Delete"
+                      title="Delete Note"
                     >
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <polyline points="3 6 5 6 21 6"/>
@@ -424,140 +435,91 @@ const UnifiedNotesSection = ({ onShowRecording, onOpenTranscript }) => {
                   </div>
                 </div>
 
-                {/* Primary Complaint */}
-                {primaryComplaint && (
-                  <div className="primary-complaint">
-                    <div className="complaint-icon">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-                      </svg>
+                {/* Medical Information */}
+                <div className="medical-content">
+                  {/* Chief Complaints */}
+                  {medicalData?.chief_complaints && medicalData.chief_complaints.length > 0 && (
+                    <div className="medical-section">
+                      <h4>Chief Complaints</h4>
+                      <ul className="medical-list">
+                        {medicalData.chief_complaints.slice(0, 2).map((complaint, index) => (
+                          <li key={index}>{complaint}</li>
+                        ))}
+                        {medicalData.chief_complaints.length > 2 && (
+                          <li className="more-items">+{medicalData.chief_complaints.length - 2} more</li>
+                        )}
+                      </ul>
                     </div>
-                    <div className="complaint-content">
-                      <span className="complaint-label">Chief Complaint</span>
-                      <p className="complaint-text">{primaryComplaint}</p>
+                  )}
+
+                  {/* Allergies - Critical */}
+                  {medicalData?.allergies && medicalData.allergies.length > 0 && (
+                    <div className="medical-section critical">
+                      <h4>⚠️ Allergies</h4>
+                      <ul className="medical-list">
+                        {medicalData.allergies.slice(0, 3).map((allergy, index) => (
+                          <li key={index} className="allergy-item">{allergy}</li>
+                        ))}
+                        {medicalData.allergies.length > 3 && (
+                          <li className="more-items">+{medicalData.allergies.length - 3} more</li>
+                        )}
+                      </ul>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* NEW: Medical Summary Section */}
-                {medicalSummary && medicalSummary.hasData && (
-                  <div className="medical-summary">
-                    <div className="summary-header">
-                      <div className="summary-icon">🏥</div>
-                      <div className="summary-title">Medical Overview</div>
+                  {/* Symptoms */}
+                  {medicalData?.symptoms && medicalData.symptoms.length > 0 && (
+                    <div className="medical-section">
+                      <h4>Current Symptoms</h4>
+                      <ul className="medical-list">
+                        {medicalData.symptoms.slice(0, 3).map((symptom, index) => (
+                          <li key={index}>{symptom}</li>
+                        ))}
+                        {medicalData.symptoms.length > 3 && (
+                          <li className="more-items">+{medicalData.symptoms.length - 3} more</li>
+                        )}
+                      </ul>
                     </div>
-                    
-                    <div className="summary-grid">
-                      {medicalSummary.symptoms.length > 0 && (
-                        <div className="summary-item">
-                          <div className="summary-item-icon">🤒</div>
-                          <div className="summary-item-content">
-                            <div className="summary-item-label">Key Symptoms</div>
-                            <div className="summary-item-value">
-                              {medicalSummary.symptoms.join(', ')}
-                              {medicalData.symptoms?.length > 3 && ` +${medicalData.symptoms.length - 3} more`}
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                  )}
 
-                      {medicalSummary.conditions.length > 0 && (
-                        <div className="summary-item">
-                          <div className="summary-item-icon">🏥</div>
-                          <div className="summary-item-content">
-                            <div className="summary-item-label">Conditions</div>
-                            <div className="summary-item-value">
-                              {medicalSummary.conditions.join(', ')}
-                              {medicalData.chronic_diseases?.length > 2 && ` +${medicalData.chronic_diseases.length - 2} more`}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {medicalSummary.medications.length > 0 && (
-                        <div className="summary-item">
-                          <div className="summary-item-icon">💊</div>
-                          <div className="summary-item-content">
-                            <div className="summary-item-label">Medications</div>
-                            <div className="summary-item-value">
-                              {medicalSummary.medications.join(', ')}
-                              {medicalData.drug_history?.length > 2 && ` +${medicalData.drug_history.length - 2} more`}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {medicalSummary.allergies.length > 0 && (
-                        <div className="summary-item critical">
-                          <div className="summary-item-icon">⚠️</div>
-                          <div className="summary-item-content">
-                            <div className="summary-item-label">ALLERGIES</div>
-                            <div className="summary-item-value">
-                              {medicalSummary.allergies.slice(0, 2).join(', ')}
-                              {medicalSummary.allergies.length > 2 && ` +${medicalSummary.allergies.length - 2} more`}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {medicalData && (
-                        <div className="summary-item">
-                          <div className="summary-item-icon">🤖</div>
-                          <div className="summary-item-content">
-                            <div className="summary-item-label">AI Analysis</div>
-                            <div className="summary-item-value">
-                              {medicalData.extraction_metadata?.method || 'GPT-4 Medical'}
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                  {/* Possible Conditions */}
+                  {medicalData?.possible_diseases && medicalData.possible_diseases.length > 0 && (
+                    <div className="medical-section">
+                      <h4>Possible Conditions</h4>
+                      <ul className="medical-list">
+                        {medicalData.possible_diseases.slice(0, 2).map((condition, index) => (
+                          <li key={index}>{condition}</li>
+                        ))}
+                        {medicalData.possible_diseases.length > 2 && (
+                          <li className="more-items">+{medicalData.possible_diseases.length - 2} more</li>
+                        )}
+                      </ul>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Transcript Preview */}
-                <div className="transcript-preview">
-                  <div className="transcript-header">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                      <polyline points="14,2 14,8 20,8"/>
-                      <line x1="16" y1="13" x2="8" y2="13"/>
-                      <line x1="16" y1="17" x2="8" y2="17"/>
-                    </svg>
-                    <span>Transcript Preview</span>
-                    <div className="transcript-stats">
-                      <span>{wordCount} words</span>
-                      {note.duration && <span>{Math.round(note.duration)}s</span>}
+                  {!medicalData && (
+                    <div className="no-medical-data">
+                      <p>Medical analysis pending or unavailable</p>
                     </div>
-                  </div>
-                  <p className="transcript-text">{preview}</p>
+                  )}
                 </div>
 
-                {/* Enhanced Card Footer */}
+                {/* Card Footer */}
                 <div className="card-footer">
-                  <div className="footer-left">
-                    <span className="session-id">ID: {note.session_id.substring(0, 8)}...</span>
-                    {note.has_medical_data && (
-                      <span className="ai-badge">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <circle cx="12" cy="12" r="3"/>
-                          <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"/>
-                        </svg>
-                        AI Analyzed
-                      </span>
-                    )}
+                  <div className="confidence-badge">
+                    <span className={`confidence ${confidenceLevel}`}>
+                      {Math.round(confidence * 100)}% confidence
+                    </span>
                   </div>
-                  <div className="footer-right">
-                    <button className="view-details-btn" onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenTranscript(note);
-                    }}>
-                      <span>View Full Details</span>
+                  {note.has_medical_data && (
+                    <div className="ai-badge">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M9 18l6-6-6-6"/>
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"/>
                       </svg>
-                    </button>
-                  </div>
+                      AI Analyzed
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -565,46 +527,115 @@ const UnifiedNotesSection = ({ onShowRecording, onOpenTranscript }) => {
         </div>
       ) : (
         <div className="empty-state">
-          <div className="empty-state-illustration">
-            <svg viewBox="0 0 200 150" fill="none">
-              <defs>
-                <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#e0f2fe" />
-                  <stop offset="100%" stopColor="#f0f9ff" />
-                </linearGradient>
-                <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#3b82f6" />
-                  <stop offset="100%" stopColor="#8b5cf6" />
-                </linearGradient>
-              </defs>
-              <rect width="200" height="150" rx="20" fill="url(#grad1)" />
-              <circle cx="100" cy="60" r="30" fill="url(#grad2)" opacity="0.1" />
-              <path d="M85 60h30M100 45v30" stroke="url(#grad2)" strokeWidth="4" strokeLinecap="round" />
-              <rect x="60" y="90" width="80" height="6" rx="3" fill="url(#grad2)" opacity="0.3" />
-              <rect x="70" y="105" width="60" height="6" rx="3" fill="url(#grad2)" opacity="0.2" />
-              <rect x="80" y="120" width="40" height="6" rx="3" fill="url(#grad2)" opacity="0.1" />
+          <div className="empty-icon">
+            <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v56a2 2 0 0 0 2 2h52a2 2 0 0 0 2-2V16z"/>
+              <polyline points="14,2 14,16 28,16"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <line x1="16" y1="21" x2="8" y2="21"/>
             </svg>
           </div>
-          <h3>No Patient Notes Found</h3>
-          <p>
-            Start by recording your first medical consultation or uploading an audio file. 
-            Our AI will transcribe and extract comprehensive medical information automatically.
-          </p>
-          <div className="empty-state-actions">
-            <button className="btn btn-primary btn-lg" onClick={onShowRecording}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-              </svg>
-              Start Recording
-            </button>
-            <button className="btn btn-outline btn-lg" onClick={loadNotes}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-                <path d="M21 3v5h-5"/>
-              </svg>
-              Refresh Data
-            </button>
+          <h3>No Medical Notes Found</h3>
+          <p>Start by recording your first medical consultation or uploading an audio file.</p>
+        </div>
+      )}
+
+      {/* Enhanced Medical Modal */}
+      {showModal && selectedNote && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="enhanced-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="header-title">
+                <h2>Medical Record</h2>
+                <p>{selectedNote.medical_data?.patient_details?.name || 'Unknown Patient'} - {formatDate(new Date(selectedNote.created_at || selectedNote.timestamp))}</p>
+              </div>
+              <button className="close-btn" onClick={() => setShowModal(false)}>×</button>
+            </div>
+            
+            {/* Modal Tabs */}
+            <div className="modal-tabs">
+              <button 
+                className={`tab-btn ${activeTab === 'transcript' ? 'active' : ''}`}
+                onClick={() => setActiveTab('transcript')}
+              >
+                Complete Transcript
+              </button>
+              <button 
+                className={`tab-btn ${activeTab === 'medical' ? 'active' : ''}`}
+                onClick={() => setActiveTab('medical')}
+              >
+                EHR Summary
+              </button>
+              <button 
+                className={`tab-btn ${activeTab === 'actions' ? 'active' : ''}`}
+                onClick={() => setActiveTab('actions')}
+              >
+                Follow-up Actions
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {activeTab === 'transcript' && (
+                <div className="transcript-tab">
+                  <div className="transcript-full">
+                    {selectedNote.text || 'No transcript available'}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'medical' && (
+                <div className="medical-tab">
+                  <div className="ehr-summary">
+                    <pre className="ehr-content">{generateEHRSummary(selectedNote)}</pre>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'actions' && (
+                <div className="actions-tab">
+                  {generatingActions ? (
+                    <div className="loading-actions">
+                      <div className="loading-spinner"></div>
+                      <p>Generating AI follow-up recommendations...</p>
+                    </div>
+                  ) : (
+                    <div className="follow-up-actions">
+                      {followUpActions.map((action, index) => (
+                        <div key={index} className={`action-item ${action.priority}`}>
+                          <div className="action-header">
+                            <span className={`priority-badge ${action.priority}`}>
+                              {action.priority.toUpperCase()}
+                            </span>
+                            <span className="category-badge">{action.category}</span>
+                          </div>
+                          <h4>{action.action}</h4>
+                          <p>{action.details}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            <div className="modal-footer">
+              <button 
+                className="btn btn-outline"
+                onClick={() => downloadMedicalSummary(selectedNote)}
+              >
+                Download EHR Summary
+              </button>
+              <button 
+                className="btn btn-outline"
+                onClick={() => apiService.downloadTranscript(selectedNote.session_id)}
+              >
+                Download Transcript
+              </button>
+              <button className="btn btn-primary" onClick={() => setShowModal(false)}>
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

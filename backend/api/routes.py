@@ -22,18 +22,55 @@ def get_config_dep(request: Request):
     return request.app.state.config
 
 
+@api_router.post("/initialize_streaming_session")
+async def initialize_streaming_session(
+    request: Request,
+    config = Depends(get_config_dep)
+):
+    """Initialize a new streaming session"""
+    try:
+        # Get session_id from request body
+        body = await request.json()
+        session_id = body.get("session_id")
+        
+        if not session_id:
+            raise HTTPException(status_code=400, detail="session_id is required")
+        
+        audio_handler = AudioHandler(config)
+        success = audio_handler.initialize_streaming_session(session_id)
+        
+        if success:
+            return JSONResponse(content={
+                "success": True,
+                "session_id": session_id,
+                "message": "Streaming session initialized"
+            })
+        else:
+            raise HTTPException(status_code=500, detail="Failed to initialize streaming session")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error initializing streaming session: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Initialization failed: {str(e)}")
+
+
 @api_router.post("/upload_audio")
 async def upload_audio(
     request: Request,
     audio: UploadFile = File(...),
     timestamp: Optional[str] = Form(None),
+    session_id: Optional[str] = Form(None),
+    chunk_sequence: Optional[int] = Form(None),
+    is_streaming: Optional[bool] = Form(False),
+    is_last_chunk: Optional[bool] = Form(False),
     config = Depends(get_config_dep)
 ):
-    """Upload audio file for processing - FIXED"""
+    """Upload audio file for processing - Enhanced for streaming"""
     try:
-        logger.info(f"Audio upload request received - File: {audio.filename}, Size: {audio.size}")
+        logger.info(f"Audio upload request - File: {audio.filename}, Streaming: {is_streaming}")
 
-        # FIXED: Enhanced validation with better error messages
+        # Enhanced validation with streaming support
         validation_result = await validate_upload_request(audio, config)
         if not validation_result["valid"]:
             logger.error(f"Validation failed: {validation_result['error']}")
@@ -46,32 +83,56 @@ async def upload_audio(
         # Initialize audio handler
         audio_handler = AudioHandler(config)
 
-        # FIXED: Better error handling and logging
-        try:
-            # Save file and queue for processing
-            result = await audio_handler.save_uploaded_file(audio, timestamp)
+        # Handle streaming vs regular upload
+        if is_streaming:
+            # Streaming chunk upload
+            if not session_id:
+                raise HTTPException(status_code=400, detail="session_id required for streaming uploads")
+            if chunk_sequence is None:
+                raise HTTPException(status_code=400, detail="chunk_sequence required for streaming uploads")
+                
+            result = await audio_handler.save_streaming_chunk(
+                audio, session_id, chunk_sequence, is_last_chunk, timestamp
+            )
             
-            logger.info(f"✅ Upload successful - Session: {result['session_id']}")
+            logger.info(f"✅ Streaming chunk uploaded - Session: {session_id}, Chunk: {chunk_sequence}")
             
             return JSONResponse(content={
                 "success": True,
-                "id": result["session_id"],
+                "session_id": session_id,
+                "chunk_sequence": chunk_sequence,
+                "is_last_chunk": is_last_chunk,
                 "filename": result["filename"],
                 "size": result["file_size"],
-                "duration": result.get("duration", 0),
-                "processing_strategy": result.get("processing_strategy", "direct"),
-                "message": "Audio uploaded successfully and queued for transcription",
+                "message": "Streaming chunk uploaded successfully",
+                "processing_triggered": result.get("processing_triggered", False)
             })
-            
-        except FileNotFoundError as e:
-            logger.error(f"File not found after upload: {e}")
-            raise HTTPException(status_code=500, detail="File upload failed - file not found after saving")
-        except ValueError as e:
-            logger.error(f"File validation error: {e}")
-            raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error(f"Unexpected upload error: {e}")
-            raise HTTPException(status_code=500, detail=f"Upload processing failed: {str(e)}")
+        else:
+            # Regular file upload (existing logic)
+            try:
+                result = await audio_handler.save_uploaded_file(audio, timestamp)
+                
+                logger.info(f"✅ Upload successful - Session: {result['session_id']}")
+                
+                return JSONResponse(content={
+                    "success": True,
+                    "id": result["session_id"],
+                    "filename": result["filename"],
+                    "size": result["file_size"],
+                    "duration": result.get("duration", 0),
+                    "processing_strategy": result.get("processing_strategy", "direct"),
+                    "message": "Audio uploaded successfully and queued for transcription",
+                })
+                
+            except FileNotFoundError as e:
+                logger.error(f"File not found after upload: {e}")
+                raise HTTPException(status_code=500, detail="File upload failed - file not found after saving")
+            except ValueError as e:
+                logger.error(f"File validation error: {e}")
+                raise HTTPException(status_code=400, detail=str(e))
+            except Exception as e:
+                logger.error(f"Unexpected upload error: {e}")
+                raise HTTPException(status_code=500, detail=f"Upload processing failed: {str(e)}")
 
     except HTTPException:
         raise
@@ -175,7 +236,8 @@ async def get_all_notes(request: Request, config = Depends(get_config_dep)):
                     "filename": status_data.get("filename", ""),
                     "file_size": status_data.get("file_size", 0),
                     "duration": float(status_data.get("audio_duration", 0)),
-                    "word_count": len(status_data.get("transcript_text", "").split()) if status_data.get("transcript_text") else 0
+                    "word_count": len(status_data.get("transcript_text", "").split()) if status_data.get("transcript_text") else 0,
+                    "recording_mode": status_data.get("recording_mode", "upload")
                 }
                 
                 all_notes.append(note)
@@ -226,7 +288,8 @@ async def search_notes(q: str, request: Request, config = Depends(get_config_dep
                         "created_at": status_data.get("processing_completed_at") or status_data.get("uploaded_at"),
                         "filename": status_data.get("filename", ""),
                         "duration": float(status_data.get("audio_duration", 0)),
-                        "word_count": len(status_data.get("transcript_text", "").split()) if status_data.get("transcript_text") else 0
+                        "word_count": len(status_data.get("transcript_text", "").split()) if status_data.get("transcript_text") else 0,
+                        "recording_mode": status_data.get("recording_mode", "upload")
                     }
                     
                     all_notes.append(note)
@@ -260,6 +323,8 @@ async def get_notes_stats(request: Request, config = Depends(get_config_dep)):
         confidence_scores = []
         notes_today = 0
         notes_this_week = 0
+        streaming_notes = 0
+        upload_notes = 0
         
         from datetime import datetime, timedelta
         today = datetime.now().date()
@@ -273,6 +338,12 @@ async def get_notes_stats(request: Request, config = Depends(get_config_dep)):
             
             if status_data and status_data.get("status") == "completed":
                 total_notes += 1
+                
+                # Recording mode stats
+                if status_data.get("recording_mode") == "streaming":
+                    streaming_notes += 1
+                else:
+                    upload_notes += 1
                 
                 # Word count
                 words = len(status_data.get("transcript_text", "").split())
@@ -306,6 +377,8 @@ async def get_notes_stats(request: Request, config = Depends(get_config_dep)):
             "success": True,
             "stats": {
                 "total_notes": total_notes,
+                "streaming_notes": streaming_notes,
+                "upload_notes": upload_notes,
                 "total_words": total_words,
                 "total_duration": round(total_duration, 1),
                 "average_confidence": round(avg_confidence, 3),
@@ -415,7 +488,8 @@ async def export_notes(request: Request, config = Depends(get_config_dep)):
                     "filename": status_data.get("filename", ""),
                     "file_size": status_data.get("file_size", 0),
                     "duration": float(status_data.get("audio_duration", 0)),
-                    "word_count": len(status_data.get("transcript_text", "").split()) if status_data.get("transcript_text") else 0
+                    "word_count": len(status_data.get("transcript_text", "").split()) if status_data.get("transcript_text") else 0,
+                    "recording_mode": status_data.get("recording_mode", "upload")
                 }
                 all_notes.append(note)
         

@@ -7,7 +7,8 @@ from datetime import datetime
 from fastapi import UploadFile
 import logging
 import aiofiles
-
+from typing import List
+import aiofiles
 from .redis_client import RedisClient
 from .audio_chunker import AudioChunker
 
@@ -714,3 +715,359 @@ class AudioHandler:
 
         except Exception:
             return 0
+
+    def initialize_streaming_session(self, session_id: str) -> bool:
+        """Initialize a new streaming session"""
+        try:
+            # Create streaming session directory
+            streaming_dir = self.config.UPLOAD_FOLDER / f"streaming_{session_id}"
+            streaming_dir.mkdir(exist_ok=True)
+            
+            # Initialize session status
+            session_data = {
+                "session_id": session_id,
+                "status": "recording",
+                "recording_mode": "streaming",
+                "chunks_received": 0,
+                "total_size": 0,
+                "streaming_dir": str(streaming_dir),
+                "created_at": datetime.utcnow().isoformat(),
+                "last_chunk_received": False
+            }
+            
+            # Set session status with longer expiry for streaming
+            self.redis_client.set_session_status(
+                session_id,
+                session_data,
+                expire_seconds=self.config.SESSION_EXPIRE_TIME * 2  # Double expiry for streaming
+            )
+            
+            logger.info(f"✅ Streaming session initialized: {session_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Error initializing streaming session {session_id}: {e}")
+            return False
+
+    async def save_streaming_chunk(self, file: UploadFile, session_id: str, 
+                                chunk_sequence: int, is_last_chunk: bool, 
+                                timestamp: str = None) -> dict:
+        """Save a streaming audio chunk and manage session state"""
+        try:
+            # Get session data
+            session_data = self.get_session_status(session_id)
+            if not session_data:
+                raise ValueError(f"Streaming session not found: {session_id}")
+            
+            if session_data.get("recording_mode") != "streaming":
+                raise ValueError(f"Session {session_id} is not a streaming session")
+            
+            # Validate chunk sequence
+            expected_sequence = session_data.get("chunks_received", 0)
+            if chunk_sequence != expected_sequence:
+                logger.warning(f"⚠️ Unexpected chunk sequence for {session_id}: expected {expected_sequence}, got {chunk_sequence}")
+            
+            # Create chunk filename
+            streaming_dir = Path(session_data["streaming_dir"])
+            chunk_filename = f"chunk_{chunk_sequence:03d}.webm"
+            chunk_filepath = streaming_dir / chunk_filename
+            
+            # Save chunk file
+            if timestamp is None:
+                timestamp = str(int(datetime.now().timestamp() * 1000))
+            
+            # Reset file pointer and save
+            await file.seek(0)
+            file_size = 0
+            
+            import aiofiles
+            async with aiofiles.open(chunk_filepath, 'wb') as f:
+                content = await file.read()
+                if not content:
+                    raise ValueError("Chunk file is empty")
+                await f.write(content)
+                file_size = len(content)
+            
+            # Verify file was saved
+            if not chunk_filepath.exists():
+                raise FileNotFoundError(f"Chunk file was not saved: {chunk_filepath}")
+            
+            # Update session status
+            current_total_size = session_data.get("total_size", 0) + file_size
+            update_data = {
+                "chunks_received": chunk_sequence + 1,
+                "total_size": current_total_size,
+                "last_chunk_at": datetime.utcnow().isoformat(),
+                "last_chunk_sequence": chunk_sequence,
+                "last_chunk_received": is_last_chunk
+            }
+            
+            self.redis_client.update_session_status(session_id, update_data)
+            
+            logger.info(f"📦 Streaming chunk saved: {session_id} chunk {chunk_sequence} ({file_size} bytes)")
+            
+            result = {
+                "session_id": session_id,
+                "filename": chunk_filename,
+                "filepath": str(chunk_filepath),
+                "file_size": file_size,
+                "chunk_sequence": chunk_sequence,
+                "is_last_chunk": is_last_chunk,
+                "processing_triggered": False
+            }
+            
+            # If this is the last chunk, trigger processing
+            if is_last_chunk:
+                success = self._finalize_streaming_session(session_id)
+                result["processing_triggered"] = success
+                logger.info(f"🏁 Last chunk received for {session_id}, processing {'triggered' if success else 'failed'}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error saving streaming chunk: {e}")
+            raise
+
+    def _finalize_streaming_session(self, session_id: str) -> bool:
+        """Finalize streaming session and trigger processing"""
+        try:
+            session_data = self.get_session_status(session_id)
+            if not session_data:
+                logger.error(f"❌ Session not found for finalization: {session_id}")
+                return False
+            
+            streaming_dir = Path(session_data["streaming_dir"])
+            if not streaming_dir.exists():
+                logger.error(f"❌ Streaming directory not found: {streaming_dir}")
+                return False
+            
+            # Merge chunks into single file
+            merged_file_path = self._merge_streaming_chunks(session_id, streaming_dir)
+            if not merged_file_path:
+                logger.error(f"❌ Failed to merge streaming chunks for {session_id}")
+                return False
+            
+            # Get merged file info
+            file_size = os.path.getsize(merged_file_path)
+            duration = self.chunker.get_audio_duration(str(merged_file_path))
+            
+            # Update session status
+            filename = Path(merged_file_path).name
+            update_data = {
+                "status": "processing",
+                "step": "chunks_merged",
+                "merged_file_path": str(merged_file_path),
+                "filename": filename,
+                "file_size": file_size,
+                "audio_duration": duration,
+                "processing_started_at": datetime.utcnow().isoformat(),
+                "processing_strategy": "streaming_merged"
+            }
+            
+            self.redis_client.update_session_status(session_id, update_data)
+            
+            # Queue for transcription processing
+            stream_id = self.queue_for_processing(
+                session_id, filename, merged_file_path, file_size, 
+                str(int(datetime.now().timestamp() * 1000))
+            )
+            
+            if stream_id:
+                # Update session with stream info
+                self.redis_client.update_session_status(session_id, {
+                    "stream_id": stream_id,
+                    "queued_for_transcription_at": datetime.utcnow().isoformat()
+                })
+                
+                logger.info(f"✅ Streaming session finalized and queued: {session_id} -> {stream_id}")
+                return True
+            else:
+                logger.error(f"❌ Failed to queue merged file for transcription: {session_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error finalizing streaming session {session_id}: {e}")
+            return False
+
+    def _merge_streaming_chunks(self, session_id: str, streaming_dir: Path) -> str:
+        """Merge streaming chunks into a single audio file"""
+        try:
+            # Find all chunk files
+            chunk_files = sorted(streaming_dir.glob("chunk_*.webm"))
+            if not chunk_files:
+                logger.error(f"❌ No chunk files found in {streaming_dir}")
+                return None
+            
+            logger.info(f"🔗 Merging {len(chunk_files)} streaming chunks for {session_id}")
+            
+            # Create output filename
+            merged_filename = f"{session_id}_streaming_merged.webm"
+            merged_filepath = self.config.UPLOAD_FOLDER / merged_filename
+            
+            # Use ffmpeg to concatenate chunks
+            if self.chunker.ffmpeg_available:
+                success = self._merge_chunks_with_ffmpeg(chunk_files, merged_filepath)
+            else:
+                # Fallback: simple binary concatenation
+                success = self._merge_chunks_binary(chunk_files, merged_filepath)
+            
+            if success and merged_filepath.exists():
+                # Cleanup chunk files and directory
+                self._cleanup_streaming_chunks(streaming_dir)
+                logger.info(f"✅ Streaming chunks merged successfully: {merged_filepath}")
+                return str(merged_filepath)
+            else:
+                logger.error(f"❌ Failed to merge streaming chunks for {session_id}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Error merging streaming chunks: {e}")
+            return None
+
+    def _merge_chunks_with_ffmpeg(self, chunk_files: List[Path], output_path: Path) -> bool:
+        """Merge chunks using ffmpeg (preferred method)"""
+        try:
+            import subprocess
+            import tempfile
+            
+            # Create temporary file list for ffmpeg
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+                for chunk_file in chunk_files:
+                    f.write(f"file '{chunk_file.absolute()}'\n")
+                filelist_path = f.name
+            
+            try:
+                # FFmpeg concat command
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-f", "concat",
+                    "-safe", "0",
+                    "-i", filelist_path,
+                    "-c", "copy",
+                    str(output_path)
+                ]
+                
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, check=True
+                )
+                
+                logger.info("✅ FFmpeg chunk merging completed")
+                return True
+                
+            except subprocess.CalledProcessError as e:
+                logger.error(f"❌ FFmpeg merge failed: {e}")
+                logger.error(f"FFmpeg stderr: {e.stderr}")
+                return False
+            finally:
+                # Cleanup temp file
+                try:
+                    os.unlink(filelist_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            logger.error(f"❌ Error in FFmpeg merge: {e}")
+            return False
+
+    def _merge_chunks_binary(self, chunk_files: List[Path], output_path: Path) -> bool:
+        """Fallback: merge chunks using binary concatenation"""
+        try:
+            logger.info("📎 Using binary concatenation for chunk merging")
+            
+            with open(output_path, 'wb') as outfile:
+                for chunk_file in chunk_files:
+                    with open(chunk_file, 'rb') as infile:
+                        outfile.write(infile.read())
+            
+            logger.info("✅ Binary chunk merging completed")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Binary merge failed: {e}")
+            return False
+
+    def _cleanup_streaming_chunks(self, streaming_dir: Path):
+        """Clean up streaming chunk files and directory"""
+        try:
+            # Remove all chunk files
+            chunk_files = list(streaming_dir.glob("chunk_*.webm"))
+            for chunk_file in chunk_files:
+                try:
+                    chunk_file.unlink()
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not delete chunk file {chunk_file}: {e}")
+            
+            # Remove directory if empty
+            try:
+                streaming_dir.rmdir()
+                logger.info(f"🧹 Cleaned up streaming directory: {streaming_dir}")
+            except OSError:
+                logger.warning(f"⚠️ Could not remove streaming directory {streaming_dir} (not empty)")
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Error cleaning up streaming chunks: {e}")
+
+    def get_streaming_session_status(self, session_id: str) -> dict:
+        """Get enhanced status for streaming sessions"""
+        try:
+            status_data = self.get_session_status(session_id)
+            if not status_data:
+                return None
+            
+            # Add streaming-specific information
+            if status_data.get("recording_mode") == "streaming":
+                chunks_received = status_data.get("chunks_received", 0)
+                total_size = status_data.get("total_size", 0)
+                is_recording = status_data.get("status") == "recording"
+                
+                status_data.update({
+                    "streaming_info": {
+                        "chunks_received": chunks_received,
+                        "total_size_mb": round(total_size / (1024 * 1024), 2),
+                        "is_recording": is_recording,
+                        "estimated_duration": chunks_received * 5,  # 5 seconds per chunk
+                        "last_chunk_received": status_data.get("last_chunk_received", False)
+                    }
+                })
+            
+            return status_data
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting streaming session status: {e}")
+            return None
+
+    def cleanup_streaming_session_files(self, session_id: str) -> bool:
+        """Clean up all files for a streaming session"""
+        try:
+            session_data = self.get_session_status(session_id)
+            if not session_data:
+                return False
+            
+            files_cleaned = 0
+            
+            # Clean up streaming directory if exists
+            streaming_dir = session_data.get("streaming_dir")
+            if streaming_dir and Path(streaming_dir).exists():
+                self._cleanup_streaming_chunks(Path(streaming_dir))
+                files_cleaned += 1
+            
+            # Clean up merged file if exists
+            merged_file = session_data.get("merged_file_path")
+            if merged_file and Path(merged_file).exists():
+                try:
+                    Path(merged_file).unlink()
+                    files_cleaned += 1
+                    logger.info(f"🗑️ Deleted merged file: {merged_file}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not delete merged file {merged_file}: {e}")
+            
+            # Clean up other files using existing method
+            if self.cleanup_session_files(session_id):
+                files_cleaned += 1
+            
+            logger.info(f"✅ Cleaned up {files_cleaned} file groups for streaming session {session_id}")
+            return files_cleaned > 0
+            
+        except Exception as e:
+            logger.error(f"❌ Error cleaning up streaming session: {e}")
+            return False

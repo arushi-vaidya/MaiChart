@@ -1,5 +1,5 @@
 // API base URL - using proxy in package.json for development
-const API_BASE_URL = '/api';
+const API_BASE_URL = 'https://maichart.maihealth.io/api';
 
 // API service class to handle all backend communication including medical extraction
 class ApiService {
