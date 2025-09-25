@@ -1,4 +1,4 @@
-# backend/app.py - FIXED: Updated import structure and medical routes
+# backend/app.py - FIXED CORS and File Size Configuration
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -246,27 +246,40 @@ def create_app(config_name=None):
 
 
 def setup_middleware(app: FastAPI, config_obj):
-    """Setup FastAPI middleware"""
+    """Setup FastAPI middleware with proper CORS"""
     
-    # CORS middleware
+    # FIXED: Enhanced CORS middleware with more permissive settings for development
+    allowed_origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "https://maichart.maihealth.io",
+        "https://www.maichart.maihealth.io"
+    ]
+    
+    # In development, be more permissive
+    if config_obj.DEBUG:
+        allowed_origins.extend([
+            "http://localhost:*",
+            "http://127.0.0.1:*",
+            "*"  # Allow all origins in development
+        ])
+    
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "http://localhost:8000",
-            "http://127.0.0.1:8000"
-        ],
+        allow_origins=["*"] if config_obj.DEBUG else allowed_origins,  # Allow all in dev
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        max_age=3600,
     )
     
     # Trusted host middleware (for production)
     if not config_obj.DEBUG:
         app.add_middleware(
             TrustedHostMiddleware, 
-            allowed_hosts=["*"]
+            allowed_hosts=["maichart.maihealth.io", "www.maichart.maihealth.io", "localhost"]
         )
 
 

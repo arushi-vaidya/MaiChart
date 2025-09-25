@@ -1,4 +1,4 @@
-# Frontend Dockerfile - Fixed multi-stage build
+# Frontend Dockerfile - Fixed with proper proxy configuration
 # Stage 1: Build React app
 FROM node:18-alpine as builder
 
@@ -8,7 +8,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci --only=production --silent
 
 # Copy source code
 COPY . .
@@ -18,6 +18,9 @@ RUN npm run build
 
 # Stage 2: Serve with nginx
 FROM nginx:alpine
+
+# Remove default nginx config
+RUN rm /etc/nginx/conf.d/default.conf
 
 # Copy built app from builder stage
 COPY --from=builder /app/build /usr/share/nginx/html

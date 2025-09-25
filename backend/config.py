@@ -1,4 +1,4 @@
-# backend/config.py - FIXED: Removed circular import
+# backend/config.py - FIXED: Proper file size limits
 import os
 from pathlib import Path
 
@@ -7,7 +7,7 @@ BASE_DIR = Path(__file__).parent
 
 
 class Config:
-    """Base configuration with MongoDB support - FIXED"""
+    """Base configuration with MongoDB support - FIXED file size limits"""
 
     # FastAPI settings
     SECRET_KEY = os.environ.get("SECRET_KEY", "your-secret-key-here")
@@ -41,12 +41,12 @@ class Config:
     MONGODB_CONNECT_TIMEOUT_MS = int(os.environ.get("MONGODB_CONNECT_TIMEOUT_MS", 10000))
     MONGODB_SOCKET_TIMEOUT_MS = int(os.environ.get("MONGODB_SOCKET_TIMEOUT_MS", 20000))
 
-    # File upload settings
+    # File upload settings - FIXED: Reasonable limits
     UPLOAD_FOLDER = BASE_DIR / "uploads"
     TRANSCRIPTS_FOLDER = BASE_DIR / "transcripts"
     CHUNKS_FOLDER = BASE_DIR / "chunks"
     LOGS_FOLDER = BASE_DIR / "logs"
-    MAX_FILE_SIZE = int(os.environ.get("MAX_FILE_SIZE", 500 * 1024 * 1024))
+    MAX_FILE_SIZE = int(os.environ.get("MAX_FILE_SIZE", 50 * 1024 * 1024))  # 50MB default
     ALLOWED_EXTENSIONS = set(os.environ.get("ALLOWED_EXTENSIONS", "webm,wav,mp3,ogg,m4a,flac").split(","))
 
     # Audio processing settings
@@ -99,6 +99,8 @@ class DevelopmentConfig(Config):
     """Development configuration"""
 
     DEBUG = True
+    # Smaller file size for development testing
+    MAX_FILE_SIZE = int(os.environ.get("MAX_FILE_SIZE", 25 * 1024 * 1024))  # 25MB for dev
     # Smaller chunks for development
     CHUNK_DURATION = int(os.environ.get("CHUNK_DURATION", 60))
     MAX_PARALLEL_CHUNKS = int(os.environ.get("MAX_PARALLEL_CHUNKS", 2))
@@ -108,6 +110,8 @@ class ProductionConfig(Config):
     """Production configuration"""
 
     DEBUG = False
+    # Larger file size for production
+    MAX_FILE_SIZE = int(os.environ.get("MAX_FILE_SIZE", 100 * 1024 * 1024))  # 100MB for production
     # Optimized for production
     CHUNK_DURATION = int(os.environ.get("CHUNK_DURATION", 180))
     MAX_PARALLEL_CHUNKS = int(os.environ.get("MAX_PARALLEL_CHUNKS", 10))
@@ -118,6 +122,8 @@ class TestingConfig(Config):
     """Testing configuration"""
     
     DEBUG = True
+    # Small file size for testing
+    MAX_FILE_SIZE = int(os.environ.get("MAX_FILE_SIZE", 5 * 1024 * 1024))  # 5MB for testing
     # Use in-memory or test databases
     REDIS_DB = int(os.environ.get("REDIS_DB", 1))  # Different Redis DB for testing
     MONGODB_DATABASE_NAME = os.environ.get("MONGODB_DATABASE_NAME", "maichart_medical_test")

@@ -1,10 +1,10 @@
-# Backend Dockerfile for MaiChart Medical Transcription System
+# Backend Dockerfile - FIXED for proper worker execution
 FROM python:3.11-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including curl for health checks
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
@@ -32,7 +32,7 @@ EXPOSE 5001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:5001/api/health || exit 1
+    CMD curl -f http://localhost:5001/health || exit 1
 
-# Default command (can be overridden in docker-compose)
+# Default command - runs backend server
 CMD ["python", "app.py"]
