@@ -218,6 +218,10 @@ class EnhancedMedicalExtractionWorker(BaseWorker):
                 # Extraction failed
                 error_msg = extraction_result.get("error", "Medical extraction failed")
                 return self._mark_extraction_failed(session_id, error_msg)
+        except openai.APIError as e:
+            logger.error(f"OpenAI API error: {e}")
+            self._mark_extraction_failed(session_id, f"API Error: {e}")
+            return True
                 
         except Exception as e:
             logger.error(f"❌ Error processing enhanced medical extraction message: {e}")

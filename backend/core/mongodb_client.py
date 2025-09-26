@@ -22,7 +22,7 @@ class MongoDBClient:
     
     def __init__(self, connection_string=None, database_name="maichart_medical"):
         self.connection_string = connection_string or os.getenv("MONGODB_CONNECTION_STRING")
-        self.database_name = database_name or os.getenv("MONGODB_DATABASE_NAME", "maichart_medical")
+        self.database_name = os.getenv("MONGODB_DATABASE_NAME", "maichart_medical")
         self.client = None
         self.db = None
         
