@@ -95,11 +95,14 @@ class FixedTranscriptionWorker(BaseWorker):
 
             # FIXED: Enhanced streams configuration with validation
             if self.worker_type == "chunk":
-                self.stream_name = self.config.AUDIO_CHUNK_STREAM
-                self.consumer_group = self.config.CHUNK_CONSUMER_GROUP
+                self.stream_name = "audio_chunks"
+                self.consumer_group = "chunk_processors"
             else:
-                self.stream_name = self.config.AUDIO_INPUT_STREAM
-                self.consumer_group = self.config.CONSUMER_GROUP
+                self.stream_name = "audio_input"
+                self.consumer_group = "audio_processors" 
+                logger.info(f"🎯 ULTIMATE: stream={self.stream_name}, group={self.consumer_group}")
+
+            logger.info(f"✅ Worker configured: stream={self.stream_name}, group={self.consumer_group}")
 
             # Ensure transcripts directory exists
             self.transcripts_dir = self.config.TRANSCRIPTS_FOLDER

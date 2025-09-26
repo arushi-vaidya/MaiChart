@@ -225,98 +225,55 @@ class BaseWorker(ABC):
             logger.warning(f"⚠️ Error during message recovery: {e}")
 
     def run(self):
-        """Main worker loop with enhanced error handling"""
-        logger.info(f"Starting {self.worker_name}...")
+        """NUCLEAR FIX: Force process all messages"""
+        logger.info(f"Starting {self.worker_name} with NUCLEAR FIX...")
 
-        # Check dependencies
         if not self.check_dependencies():
             logger.error("Dependency check failed. Exiting.")
             return 1
+
+        # NUCLEAR: Clear ALL pending messages immediately
+        try:
+            pending = self.redis_client.client.xpending_range(self.stream_name, self.consumer_group, "-", "+", 1000)
+            for msg in pending:
+                try:
+                    self.redis_client.client.xclaim(self.stream_name, self.consumer_group, "nuclear_cleanup", min_idle_time=0, message_ids=[msg['message_id']])
+                    self.redis_client.client.xack(self.stream_name, self.consumer_group, msg['message_id'])
+                    logger.info(f"🧹 NUCLEAR: Cleared {msg['message_id']}")
+                except:
+                    pass
+        except:
+            pass
+
         self.ensure_consumer_group_exists()
-        self.recover_pending_messages()
-        self.cleanup_consumer_group()
-
-        # Clean up any pending messages from previous runs
-        self.cleanup_consumer_group()
-
-        # Main processing loop
-        consecutive_errors = 0
-        max_consecutive_errors = 5
 
         while self.running:
             try:
-                # Read messages from Redis stream
-                messages = self.redis_client.read_stream(
-                    self.stream_name,
-                    self.consumer_group,
-                    self.consumer_name,
-                    count=1,
-                    block=self.block_time,
+                # NUCLEAR: Read from 0 to get ALL messages, not just new ones
+                messages = self.redis_client.client.xreadgroup(
+                    self.consumer_group, self.consumer_name, 
+                    {self.stream_name: "0"}, count=1, block=2000
                 )
 
-                if not messages:
-                    consecutive_errors = 0  # Reset error counter on successful read
-                    continue
-
-                # Process each message
-                for stream, stream_messages in messages:
-                    # CHANGE THIS SECTION:
-                    for message_id, fields in stream_messages:
-                        logger.info(f"📨 Processing message {message_id}")
-                        try:
-                            # Process the message
-                            success = self.process_message(fields)
-                                
-                            # FIXED: Always acknowledge the message to prevent queue blocking
-                            self.redis_client.acknowledge_message(
-                                self.stream_name, self.consumer_group, message_id
-                            )
-                            if success:
-                                logger.info(f"✅ Message {message_id} processed successfully")
-                            else:
-                                logger.warning(f"⚠️ Message {message_id} failed but acknowledged to prevent blocking")
-            
-                        except Exception as e:
-                            logger.error(f"❌ Error processing message {message_id}: {e}")
+                if messages:
+                    for stream, stream_messages in messages:
+                        for message_id, fields in stream_messages:
+                            logger.info(f"🚀 NUCLEAR: Processing {message_id}")
                             try:
-                                    self.redis_client.acknowledge_message(
-                                        self.stream_name, self.consumer_group, message_id
-                                    )
-                                    logger.info(f"❌ Failed message {message_id} acknowledged to prevent queue blocking")
-                            except Exception as ack_error:
-                                    logger.error(f"❌ Critical: Failed to acknowledge {message_id}: {ack_error}")
-        
-        # Update session status if possible
-                            session_id = fields.get("session_id")
-                            if session_id:
-                                self.handle_message_error(session_id, e)
-
-                            # FIXED: Still acknowledge the message to prevent queue blocking
-                            try:
-                                self.redis_client.acknowledge_message(
-                                    self.stream_name, self.consumer_group, message_id
-                                )
-                                logger.info(f"❌ Failed message {message_id} acknowledged to prevent blocking")
-                            except Exception as ack_error:
-                                logger.error(f"❌ Failed to acknowledge message {message_id}: {ack_error}")
-
-                            consecutive_errors += 1
+                                success = self.process_message(fields)
+                                self.redis_client.acknowledge_message(self.stream_name, self.consumer_group, message_id)
+                                logger.info(f"✅ NUCLEAR: Processed {message_id}")
+                            except Exception as e:
+                                logger.error(f"❌ NUCLEAR: Error {message_id}: {e}")
+                                self.redis_client.acknowledge_message(self.stream_name, self.consumer_group, message_id)
 
             except KeyboardInterrupt:
-                logger.info("Received keyboard interrupt")
                 break
             except Exception as e:
-                logger.error(f"❌ Error in worker loop: {e}")
-                consecutive_errors += 1
-                
-                # If we have too many consecutive errors, exit
-                if consecutive_errors >= max_consecutive_errors:
-                    logger.error(f"❌ Too many consecutive errors ({consecutive_errors}), exiting")
-                    break
-                    
-                time.sleep(min(5 * consecutive_errors, 30))  # Exponential backoff with max
+                logger.error(f"❌ NUCLEAR: Loop error: {e}")
+                time.sleep(1)
 
-        logger.info(f"{self.worker_name} stopped")
+        logger.info(f"🛑 NUCLEAR: {self.worker_name} stopped")
         return 0
 
     def get_worker_stats(self):

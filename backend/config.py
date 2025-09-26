@@ -58,10 +58,10 @@ class Config:
 
     # Redis streams
     AUDIO_INPUT_STREAM = os.environ.get("AUDIO_INPUT_STREAM", "audio_input")
-    AUDIO_CHUNK_STREAM = os.environ.get("AUDIO_CHUNK_STREAM", "audio_chunks")
-    PROGRESS_STREAM = os.environ.get("PROGRESS_STREAM", "progress_updates")
+    AUDIO_CHUNK_STREAM = os.environ.get("AUDIO_CHUNK_STREAM", "audio_chunks") 
     CONSUMER_GROUP = os.environ.get("CONSUMER_GROUP", "audio_processors")
     CHUNK_CONSUMER_GROUP = os.environ.get("CHUNK_CONSUMER_GROUP", "chunk_processors")
+    PROGRESS_STREAM = os.environ.get("PROGRESS_STREAM", "progress_updates")
 
     # Worker settings
     WORKER_TIMEOUT = int(os.environ.get("WORKER_TIMEOUT", 3600))

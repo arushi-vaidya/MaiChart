@@ -66,49 +66,14 @@ class RedisClient:
             logger.error(f"Error adding to stream {stream_name}: {e}")
             raise
 
-    def read_stream(
-        self,
-        stream_name: str,
-        consumer_group: str,
-        consumer_name: str,
-        count: int = 1,
-        block: int = 1000,
-    ) -> list:
-        """Read from Redis stream with consumer group and connection retry"""
-        max_retries = 3
+    def read_stream(self, stream_name: str, consumer_group: str, consumer_name: str, count: int = 1, block: int = 1000) -> list:
+        """NUCLEAR: Direct Redis call"""
+        try:
+            self.client.xgroup_create(stream_name, consumer_group, id="0", mkstream=True)
+        except:
+            pass
         
-        for attempt in range(max_retries):
-            try:
-                # Create consumer group if it doesn't exist
-                try:
-                    self.client.xgroup_create(
-                        stream_name, consumer_group, id="0", mkstream=True
-                    )
-                except redis.exceptions.ResponseError as e:
-                    if "BUSYGROUP" not in str(e):
-                        raise
-
-                # Read from stream with shorter block time for better responsiveness
-                messages = self.client.xreadgroup(
-                    consumer_group,
-                    consumer_name,
-                    {stream_name: ">"},
-                    count=count,
-                    block=min(block, 5000),  # Max 5 second block
-                )
-
-                return messages
-
-            except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
-                if attempt == max_retries - 1:
-                    logger.error(f"❌ Redis connection failed after {max_retries} attempts: {e}")
-                    raise
-                logger.warning(f"⚠️ Redis connection retry {attempt + 1}/{max_retries}: {e}")
-                time.sleep(2 ** attempt)  # Exponential backoff
-                
-            except Exception as e:
-                logger.error(f"❌ Error reading from stream {stream_name}: {e}")
-                raise
+        return self.client.xreadgroup(consumer_group, consumer_name, {stream_name: "0"}, count=count, block=block)
 
     def acknowledge_message(
         self, stream_name: str, consumer_group: str, message_id: str
