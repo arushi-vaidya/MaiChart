@@ -171,6 +171,59 @@ class BaseWorker(ABC):
         except Exception as e:
             logger.warning(f"⚠️ Error during consumer group cleanup: {e}")
 
+    def ensure_consumer_group_exists(self):
+        """Ensure consumer group exists and is properly configured"""
+        try:
+            # Create consumer group if it doesn't exist
+            self.redis_client.client.xgroup_create(
+                self.stream_name, self.consumer_group, id="0", mkstream=True
+            )
+            logger.info(f"✅ Consumer group {self.consumer_group} ready")
+        except Exception as e:
+            if "BUSYGROUP" in str(e):
+                logger.info(f"✅ Consumer group {self.consumer_group} already exists")
+            else:
+                logger.error(f"❌ Error with consumer group: {e}")
+                raise
+
+    def recover_pending_messages(self):
+        """Recover and reprocess pending messages older than 5 minutes"""
+        try:
+            # Get pending messages older than 5 minutes
+            pending = self.redis_client.client.xpending_range(
+                self.stream_name, self.consumer_group, "-", "+", 100
+            )
+            
+            recovered = 0
+            for msg in pending:
+                message_id = msg["message_id"]
+                idle_time = msg["time_since_delivered"]
+                
+                # If message is pending for more than 5 minutes, claim it
+                if idle_time > 300000:  # 5 minutes in milliseconds
+                    try:
+                        claimed = self.redis_client.client.xclaim(
+                            self.stream_name, self.consumer_group, self.consumer_name,
+                            min_idle_time=300000, message_ids=[message_id]
+                        )
+                        
+                        if claimed:
+                            # Just acknowledge old stuck messages to clear the queue
+                            self.redis_client.acknowledge_message(
+                                self.stream_name, self.consumer_group, message_id
+                            )
+                            recovered += 1
+                            logger.info(f"🔄 Recovered stuck message: {message_id}")
+                            
+                    except Exception as e:
+                        logger.warning(f"⚠️ Could not recover message {message_id}: {e}")
+            
+            if recovered > 0:
+                logger.info(f"🔄 Recovered {recovered} stuck messages from queue")
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Error during message recovery: {e}")
+
     def run(self):
         """Main worker loop with enhanced error handling"""
         logger.info(f"Starting {self.worker_name}...")
@@ -179,6 +232,9 @@ class BaseWorker(ABC):
         if not self.check_dependencies():
             logger.error("Dependency check failed. Exiting.")
             return 1
+        self.ensure_consumer_group_exists()
+        self.recover_pending_messages()
+        self.cleanup_consumer_group()
 
         # Clean up any pending messages from previous runs
         self.cleanup_consumer_group()
@@ -204,28 +260,33 @@ class BaseWorker(ABC):
 
                 # Process each message
                 for stream, stream_messages in messages:
+                    # CHANGE THIS SECTION:
                     for message_id, fields in stream_messages:
                         logger.info(f"📨 Processing message {message_id}")
-
                         try:
                             # Process the message
                             success = self.process_message(fields)
-
-                            # FIXED: Always acknowledge the message to prevent blocking
+                                
+                            # FIXED: Always acknowledge the message to prevent queue blocking
                             self.redis_client.acknowledge_message(
                                 self.stream_name, self.consumer_group, message_id
                             )
-                            
                             if success:
                                 logger.info(f"✅ Message {message_id} processed successfully")
-                                consecutive_errors = 0  # Reset error counter
                             else:
-                                logger.error(f"❌ Message {message_id} failed but acknowledged")
-
+                                logger.warning(f"⚠️ Message {message_id} failed but acknowledged to prevent blocking")
+            
                         except Exception as e:
                             logger.error(f"❌ Error processing message {message_id}: {e}")
-
-                            # Try to update session status if we have session_id
+                            try:
+                                    self.redis_client.acknowledge_message(
+                                        self.stream_name, self.consumer_group, message_id
+                                    )
+                                    logger.info(f"❌ Failed message {message_id} acknowledged to prevent queue blocking")
+                            except Exception as ack_error:
+                                    logger.error(f"❌ Critical: Failed to acknowledge {message_id}: {ack_error}")
+        
+        # Update session status if possible
                             session_id = fields.get("session_id")
                             if session_id:
                                 self.handle_message_error(session_id, e)

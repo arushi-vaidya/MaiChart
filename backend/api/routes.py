@@ -292,7 +292,45 @@ async def cleanup_session(session_id: str, request: Request, config = Depends(ge
         logger.error(f"Error cleaning up session: {str(e)}")
         raise HTTPException(status_code=500, detail="Cleanup failed")
 
-
+@api_router.get("/queue_status")
+async def get_queue_status(request: Request, config = Depends(get_config_dep)):
+    """Get queue status for debugging"""
+    try:
+        audio_handler = AudioHandler(config)
+        
+        # Get stream info for both streams
+        direct_stream_info = audio_handler.redis_client.get_stream_info(config.AUDIO_INPUT_STREAM)
+        chunk_stream_info = audio_handler.redis_client.get_stream_info(config.AUDIO_CHUNK_STREAM)
+        
+        # Get pending messages for consumer groups
+        direct_pending = audio_handler.redis_client.get_pending_messages(
+            config.AUDIO_INPUT_STREAM, config.CONSUMER_GROUP
+        )
+        chunk_pending = audio_handler.redis_client.get_pending_messages(
+            config.AUDIO_CHUNK_STREAM, config.CHUNK_CONSUMER_GROUP
+        )
+        
+        return JSONResponse(content={
+            "success": True,
+            "queues": {
+                "direct_transcription": {
+                    "stream_length": direct_stream_info.get("length", 0),
+                    "pending_messages": len(direct_pending),
+                    "consumer_groups": direct_stream_info.get("groups", 0)
+                },
+                "chunk_transcription": {
+                    "stream_length": chunk_stream_info.get("length", 0),
+                    "pending_messages": len(chunk_pending), 
+                    "consumer_groups": chunk_stream_info.get("groups", 0)
+                }
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting queue status: {str(e)}")
+        raise HTTPException(status_code=500, detail="Queue status check failed")
+    
 @api_router.get("/health")
 async def health_check(request: Request, config = Depends(get_config_dep)):
     """Health check endpoint"""
