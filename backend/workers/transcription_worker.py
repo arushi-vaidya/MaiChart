@@ -326,6 +326,7 @@ class EnhancedTranscriptionWorker(BaseWorker):
             logger.info(f"🎯 Processing direct session {session_id}")
             logger.info(f"📁 File: {filename}")
             logger.info(f"📍 Path: {filepath}")
+            logger.info(f"🔄 Message Type: {message_type}")
 
             if not all([session_id, filepath, filename]):
                 logger.error("❌ Missing required fields in direct message")

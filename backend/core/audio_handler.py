@@ -200,7 +200,8 @@ class AudioHandler:
         try:
             # Queue for direct processing
             stream_id = self.queue_for_processing(
-                session_id, filename, filepath, file_size, timestamp
+                session_id, filename, merged_file_path, file_size, 
+                str(int(datetime.now().timestamp() * 1000))
             )
 
             # Add duration info
@@ -283,11 +284,11 @@ class AudioHandler:
                 "session_id": session_id,
                 "timestamp": timestamp,
                 "filename": filename,
-                "filepath": filepath,
+                "filepath": filepath,  # This should be the merged file path
                 "file_size": file_size,
                 "status": "uploaded",
                 "uploaded_at": datetime.utcnow().isoformat(),
-                "type": "direct_processing",
+                "type": "direct_processing",  # Make sure this is "direct_processing"
             }
 
             # Add to Redis stream
