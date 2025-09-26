@@ -279,21 +279,22 @@ class AudioHandler:
             logger.error(f"❌ Error queuing chunks: {e}")
             return 0
 
-    def queue_for_processing(
-        self, session_id, filename, filepath, file_size, timestamp
-    ):
-        """Add audio file to processing queue (original method for direct processing)"""
+    def queue_for_processing(self, session_id, filename, filepath, file_size, timestamp):
+        """FIXED: Add audio file to processing queue with proper stream management"""
         try:
+            # Clear any stuck messages first
+            self._clear_stuck_messages()
+            
             # Prepare data for Redis stream
             audio_data = {
                 "session_id": session_id,
                 "timestamp": timestamp,
                 "filename": filename,
-                "filepath": filepath,  # This should be the merged file path
-                "file_size": file_size,
+                "filepath": str(filepath),  # Ensure string
+                "file_size": str(file_size),  # Ensure string
                 "status": "uploaded",
                 "uploaded_at": datetime.utcnow().isoformat(),
-                "type": "direct_processing",  # Make sure this is "direct_processing"
+                "type": "direct_processing",
             }
 
             # Add to Redis stream
@@ -309,12 +310,14 @@ class AudioHandler:
                     "queued_at": datetime.utcnow().isoformat(),
                     "filename": filename,
                     "file_size": file_size,
+                    "filepath": str(filepath),
                     "original_format": self.get_file_extension(filename).lstrip("."),
                 },
                 expire_seconds=self.config.SESSION_EXPIRE_TIME,
             )
 
-            logger.info(f"📤 Queued for processing: {session_id} -> {stream_id}")
+            logger.info(f"📤 QUEUED FOR PROCESSING: {session_id} -> {stream_id}")
+            logger.info(f"🎯 Stream: {stream_name}, Group: {self.config.CONSUMER_GROUP}")
             return stream_id
 
         except Exception as e:
@@ -721,6 +724,27 @@ class AudioHandler:
 
         except Exception:
             return 0
+    def _clear_stuck_messages(self):
+        """FIXED: Clear any stuck messages in queues"""
+        try:
+            # Clear stuck direct processing messages
+            pending = self.redis_client.client.xpending_range(
+                self.config.AUDIO_INPUT_STREAM, self.config.CONSUMER_GROUP, "-", "+", 100
+            )
+            
+            for msg in pending:
+                message_id = msg["message_id"]
+                try:
+                    self.redis_client.client.xack(
+                        self.config.AUDIO_INPUT_STREAM, self.config.CONSUMER_GROUP, message_id
+                    )
+                    logger.info(f"🧹 Cleared stuck message: {message_id}")
+                except:
+                    pass
+                    
+            logger.info(f"🧹 Cleared {len(pending)} stuck messages")
+        except Exception as e:
+            logger.warning(f"⚠️ Error clearing stuck messages: {e}")
 
     def initialize_streaming_session(self, session_id: str) -> bool:
         """Initialize a new streaming session"""

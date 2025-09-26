@@ -41,11 +41,11 @@ class FixedTranscriptionWorker(BaseWorker):
 
     def __init__(self, config_name="default", worker_type="direct"):
         try:
-            # FIXED: Better worker name and type handling
+            # FIXED: Set worker_type BEFORE calling super().__init__
+            self.worker_type = worker_type  # ADD THIS LINE FIRST
+            
             worker_name = f"transcription_worker_{worker_type}"
             super().__init__(worker_name, config_name)
-
-            self.worker_type = worker_type  # 'direct' or 'chunk'
 
             # FIXED: Get AssemblyAI API key with validation
             self.api_key = os.getenv("ASSEMBLYAI_API_KEY")
@@ -95,14 +95,13 @@ class FixedTranscriptionWorker(BaseWorker):
 
             # FIXED: Enhanced streams configuration with validation
             if self.worker_type == "chunk":
-                self.stream_name = "audio_chunks"
-                self.consumer_group = "chunk_processors"
+                self.stream_name = self.config.AUDIO_CHUNK_STREAM
+                self.consumer_group = self.config.CHUNK_CONSUMER_GROUP
             else:
-                self.stream_name = "audio_input"
-                self.consumer_group = "audio_processors" 
-                logger.info(f"🎯 ULTIMATE: stream={self.stream_name}, group={self.consumer_group}")
-
-            logger.info(f"✅ Worker configured: stream={self.stream_name}, group={self.consumer_group}")
+                self.stream_name = self.config.AUDIO_INPUT_STREAM
+                self.consumer_group = self.config.CONSUMER_GROUP
+                
+            logger.info(f"🎯 WORKER CONFIG: stream={self.stream_name}, group={self.consumer_group}")
 
             # Ensure transcripts directory exists
             self.transcripts_dir = self.config.TRANSCRIPTS_FOLDER

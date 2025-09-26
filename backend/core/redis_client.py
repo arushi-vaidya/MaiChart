@@ -67,24 +67,30 @@ class RedisClient:
             raise
 
     def read_stream(self, stream_name: str, consumer_group: str, consumer_name: str, count: int = 1, block: int = 1000) -> list:
-        """NUCLEAR: Direct Redis call"""
+        """FIXED: Proper Redis stream reading"""
         try:
-            self.client.xgroup_create(stream_name, consumer_group, id="0", mkstream=True)
-        except:
-            pass
-        
-        return self.client.xreadgroup(consumer_group, consumer_name, {stream_name: "0"}, count=count, block=block)
-
-    def acknowledge_message(
-        self, stream_name: str, consumer_group: str, message_id: str
-    ):
-        """Acknowledge processed message"""
-        try:
-            self.client.xack(stream_name, consumer_group, message_id)
-            logger.debug(f"Acknowledged message {message_id} in {stream_name}")
+            # Ensure consumer group exists
+            try:
+                self.client.xgroup_create(stream_name, consumer_group, id="0", mkstream=True)
+            except Exception as e:
+                if "BUSYGROUP" not in str(e):
+                    logger.error(f"Error creating consumer group: {e}")
+            
+            # Read from stream using ">" to get new messages
+            result = self.client.xreadgroup(
+                consumer_group, 
+                consumer_name, 
+                {stream_name: ">"}, 
+                count=count, 
+                block=block
+            )
+            
+            logger.debug(f"📨 Read {len(result)} messages from {stream_name}")
+            return result
+            
         except Exception as e:
-            logger.error(f"Error acknowledging message {message_id}: {e}")
-            raise
+            logger.error(f"❌ Error reading from stream {stream_name}: {e}")
+            return []
 
     def set_session_status(
         self, session_id: str, status_data: Dict[str, Any], expire_seconds: int = 3600
@@ -182,3 +188,12 @@ class RedisClient:
         except Exception as e:
             logger.error(f"Error getting pending messages: {e}")
             return []
+        
+    def acknowledge_message(self, stream_name: str, consumer_group: str, message_id: str):
+        """Acknowledge processed message"""
+        try:
+            self.client.xack(stream_name, consumer_group, message_id)
+            logger.debug(f"Acknowledged message {message_id} in {stream_name}")
+        except Exception as e:
+            logger.error(f"Error acknowledging message {message_id}: {e}")
+            raise

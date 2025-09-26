@@ -44,6 +44,7 @@ class EnhancedMedicalExtractionWorker(BaseWorker):
     """
 
     def __init__(self, config_name="default"):
+        self.worker_type = "medical_extraction"
         super().__init__("enhanced_medical_extraction_worker", config_name)
         
         # FIXED: Override stream configuration for medical extraction

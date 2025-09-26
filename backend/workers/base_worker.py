@@ -225,55 +225,62 @@ class BaseWorker(ABC):
             logger.warning(f"⚠️ Error during message recovery: {e}")
 
     def run(self):
-        """NUCLEAR FIX: Force process all messages"""
-        logger.info(f"Starting {self.worker_name} with NUCLEAR FIX...")
+        """FIXED: Simplified run method that actually processes messages"""
+        logger.info(f"🚀 Starting {self.worker_name}...")
 
         if not self.check_dependencies():
-            logger.error("Dependency check failed. Exiting.")
+            logger.error("❌ Dependency check failed. Exiting.")
             return 1
-
-        # NUCLEAR: Clear ALL pending messages immediately
-        try:
-            pending = self.redis_client.client.xpending_range(self.stream_name, self.consumer_group, "-", "+", 1000)
-            for msg in pending:
-                try:
-                    self.redis_client.client.xclaim(self.stream_name, self.consumer_group, "nuclear_cleanup", min_idle_time=0, message_ids=[msg['message_id']])
-                    self.redis_client.client.xack(self.stream_name, self.consumer_group, msg['message_id'])
-                    logger.info(f"🧹 NUCLEAR: Cleared {msg['message_id']}")
-                except:
-                    pass
-        except:
-            pass
 
         self.ensure_consumer_group_exists()
 
         while self.running:
             try:
-                # NUCLEAR: Read from 0 to get ALL messages, not just new ones
+                # FIXED: Use correct Redis stream reading
                 messages = self.redis_client.client.xreadgroup(
-                    self.consumer_group, self.consumer_name, 
-                    {self.stream_name: "0"}, count=1, block=2000
+                    self.consumer_group, 
+                    self.consumer_name, 
+                    {self.stream_name: ">"}, 
+                    count=1, 
+                    block=2000
                 )
 
                 if messages:
                     for stream, stream_messages in messages:
                         for message_id, fields in stream_messages:
-                            logger.info(f"🚀 NUCLEAR: Processing {message_id}")
+                            logger.info(f"📨 Processing message {message_id} from {stream}")
+                            
                             try:
+                                # Process the message
                                 success = self.process_message(fields)
-                                self.redis_client.acknowledge_message(self.stream_name, self.consumer_group, message_id)
-                                logger.info(f"✅ NUCLEAR: Processed {message_id}")
+                                
+                                # ALWAYS acknowledge to prevent stuck messages - FIXED method call
+                                self.redis_client.client.xack(
+                                    self.stream_name, self.consumer_group, message_id
+                                )
+                                
+                                if success:
+                                    logger.info(f"✅ Message {message_id} processed successfully")
+                                else:
+                                    logger.error(f"❌ Message {message_id} failed but acknowledged")
+                                    
                             except Exception as e:
-                                logger.error(f"❌ NUCLEAR: Error {message_id}: {e}")
-                                self.redis_client.acknowledge_message(self.stream_name, self.consumer_group, message_id)
+                                logger.error(f"❌ Error processing {message_id}: {e}")
+                                # Still acknowledge to prevent blocking - FIXED method call
+                                try:
+                                    self.redis_client.client.xack(
+                                        self.stream_name, self.consumer_group, message_id
+                                    )
+                                except:
+                                    pass
 
             except KeyboardInterrupt:
                 break
             except Exception as e:
-                logger.error(f"❌ NUCLEAR: Loop error: {e}")
+                logger.error(f"❌ Error in worker loop: {e}")
                 time.sleep(1)
 
-        logger.info(f"🛑 NUCLEAR: {self.worker_name} stopped")
+        logger.info(f"🛑 {self.worker_name} stopped")
         return 0
 
     def get_worker_stats(self):
