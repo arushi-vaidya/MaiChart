@@ -61,13 +61,13 @@ const AudioRecorder = ({ onRecordingComplete }) => {
 
   // File validation
   const validateFile = useCallback((file) => {
-    const maxSize = 90 * 1024 * 1024; // 90MB
+    const maxSize = 50 * 1024 * 1024; // 50 MB
     const allowedTypes = ['audio/webm', 'audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/m4a'];
     const allowedExtensions = ['.webm', '.wav', '.mp3', '.ogg', '.m4a'];
 
     // Check file size
     if (file.size > maxSize) {
-      updateStatus('File too large. Maximum size is 90MB.', 'error');
+      updateStatus('File too large. Maximum size is 50MB.', 'error');
       return false;
     }
 

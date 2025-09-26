@@ -990,20 +990,26 @@ class AudioHandler:
     def _cleanup_streaming_chunks(self, streaming_dir: Path):
         """Clean up streaming chunk files and directory"""
         try:
+            # Add a small delay to ensure file operations are complete
+            import time
+            time.sleep(1)
+            
             # Remove all chunk files
             chunk_files = list(streaming_dir.glob("chunk_*.webm"))
             for chunk_file in chunk_files:
                 try:
-                    chunk_file.unlink()
+                    if chunk_file.exists():  # Add existence check
+                        chunk_file.unlink()
                 except Exception as e:
                     logger.warning(f"⚠️ Could not delete chunk file {chunk_file}: {e}")
             
             # Remove directory if empty
             try:
-                streaming_dir.rmdir()
-                logger.info(f"🧹 Cleaned up streaming directory: {streaming_dir}")
-            except OSError:
-                logger.warning(f"⚠️ Could not remove streaming directory {streaming_dir} (not empty)")
+                if streaming_dir.exists() and not any(streaming_dir.iterdir()):  # Only if empty
+                    streaming_dir.rmdir()
+                    logger.info(f"🧹 Cleaned up streaming directory: {streaming_dir}")
+            except OSError as e:
+                logger.warning(f"⚠️ Could not remove streaming directory {streaming_dir}: {e}")
                 
         except Exception as e:
             logger.warning(f"⚠️ Error cleaning up streaming chunks: {e}")
