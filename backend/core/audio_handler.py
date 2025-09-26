@@ -144,8 +144,9 @@ class AudioHandler:
                 "status": "chunking_completed",
                 "processing_strategy": "chunked",
                 "original_filename": filename,
-                "original_filepath": filepath,
+                "original_filepath": str(filepath),  # Ensure this is a string
                 "file_size": file_size,
+                "audio_duration": duration,  # Add this
                 "duration": duration,
                 "total_chunks": len(chunks_info),
                 "chunks_info": json.dumps(chunks_info),
@@ -200,13 +201,17 @@ class AudioHandler:
         try:
             # Queue for direct processing
             stream_id = self.queue_for_processing(
-                session_id, filename, merged_file_path, file_size, 
+                session_id, filename, str(filepath), file_size,  # <-- FIXED
                 str(int(datetime.now().timestamp() * 1000))
             )
 
             # Add duration info
             self.redis_client.update_session_status(
-                session_id, {"processing_strategy": "direct", "duration": duration}
+                session_id, {
+                    "processing_strategy": "direct", 
+                    "audio_duration": duration,
+                    "duration": duration
+                }
             )
 
             return {
@@ -869,7 +874,7 @@ class AudioHandler:
             
             # Queue for transcription processing
             stream_id = self.queue_for_processing(
-                session_id, filename, merged_file_path, file_size, 
+                session_id, filename, str(merged_file_path), file_size,  # FIXED: use merged_file_path
                 str(int(datetime.now().timestamp() * 1000))
             )
             

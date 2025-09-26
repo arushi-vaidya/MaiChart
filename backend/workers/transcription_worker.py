@@ -322,6 +322,7 @@ class EnhancedTranscriptionWorker(BaseWorker):
             session_id = message_data.get("session_id")
             filepath = message_data.get("filepath")
             filename = message_data.get("filename")
+            message_type = message_data.get("type", "direct_processing")  # FIXED: Add this line
 
             logger.info(f"🎯 Processing direct session {session_id}")
             logger.info(f"📁 File: {filename}")

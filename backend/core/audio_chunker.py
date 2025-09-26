@@ -58,15 +58,26 @@ class AudioChunker:
                 audio_path,
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            
             try:
-                duration = float(result.stdout.strip())
-            except ValueError:
-                logger.error(f"❌ Invalid audio duration value: {result.stdout.strip()}")
+                duration_str = result.stdout.strip()
+                if duration_str in ['N/A', '', 'null'] or not duration_str:
+                    logger.warning(f"⚠️ Could not determine audio duration for {audio_path}, using 0.0")
+                    duration = 0.0
+                else:
+                    duration = float(duration_str)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"⚠️ Invalid audio duration value: '{result.stdout.strip()}' for {audio_path}, using 0.0")
                 duration = 0.0
+                
             logger.info(f"📏 Audio duration: {duration:.2f} seconds")
             return duration
+            
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"⚠️ ffprobe failed for {audio_path}: {e}, using 0.0")
+            return 0.0
         except Exception as e:
-            logger.error(f"❌ Error getting audio duration: {e}")
+            logger.error(f"❌ Error getting audio duration for {audio_path}: {e}")
             return 0.0
 
     def should_chunk_audio(self, audio_path: str, max_duration: int = None) -> bool:

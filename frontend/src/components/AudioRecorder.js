@@ -67,7 +67,7 @@ const AudioRecorder = ({ onRecordingComplete }) => {
 
     // Check file size
     if (file.size > maxSize) {
-      updateStatus('File too large. Maximum size is 50MB.', 'error');
+      updateStatus('File too large. Maximum size is 90MB.', 'error');
       return false;
     }
 
