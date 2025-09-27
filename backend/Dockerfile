@@ -1,10 +1,15 @@
-# Backend Dockerfile - FIXED for proper worker execution
+# Backend Dockerfile - Docker-only optimized
 FROM python:3.11-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies including curl for health checks
+# Set environment variable for Docker detection
+ENV RUNNING_IN_DOCKER=true
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Install system dependencies including ffmpeg and curl
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
@@ -21,11 +26,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p uploads transcripts chunks logs
-
-# Set environment variables
-ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
+RUN mkdir -p /app/uploads /app/transcripts /app/chunks /app/logs
 
 # Expose port
 EXPOSE 5001

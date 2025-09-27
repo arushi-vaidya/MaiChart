@@ -170,39 +170,42 @@ def create_app(config_name=None):
     # Enhanced health check endpoint
     @app.get("/health")
     async def health_check():
-        """Root health check endpoint with storage status"""
-        mongodb_status = "disabled"
-        if config_obj.ENABLE_MONGODB and MONGODB_AVAILABLE:
-            if hasattr(app.state, 'mongodb_client') and app.state.mongodb_client:
-                mongodb_healthy = app.state.mongodb_client.health_check()
-                mongodb_status = "healthy" if mongodb_healthy else "unhealthy"
-            else:
-                mongodb_status = "connection_failed"
-        elif not MONGODB_AVAILABLE:
-            mongodb_status = "not_installed"
-        
-        storage_strategy = config_obj.STORAGE_STRATEGY if config_obj.ENABLE_MONGODB else "redis_only"
-        
-        return {
+        """Enhanced health check with service status"""
+        status = {
             "status": "healthy",
-            "service": "MaiChart Medical Transcription API",
-            "version": "2.3.0",
+            "service": "MaiChart Medical API",
             "timestamp": datetime.utcnow().isoformat(),
-            "storage": {
-                "strategy": storage_strategy,
-                "redis": "enabled",
-                "mongodb": mongodb_status,
-                "mongodb_available": MONGODB_AVAILABLE,
-                "analytics_enabled": config_obj.ENABLE_MEDICAL_ANALYTICS and config_obj.ENABLE_MONGODB
-            },
-            "features": {
-                "transcription": "enabled",
-                "medical_extraction": "enabled" if os.getenv("ENABLE_MEDICAL_EXTRACTION", "true").lower() == "true" else "disabled",
-                "auto_medical_extraction": "enabled",
-                "parallel_chunking": "enabled",
-                "persistent_storage": mongodb_status not in ["disabled", "not_installed"]
-            }
+            "services": {},
+            "queues": {}
         }
+        
+        # Check Redis
+        try:
+            app.state.redis_client.ping()
+            status["services"]["redis"] = "healthy"
+        except:
+            status["services"]["redis"] = "unhealthy"
+            status["status"] = "degraded"
+        
+        # Check MongoDB
+        if hasattr(app.state, 'mongodb_client') and app.state.mongodb_client:
+            mongo_ok = app.state.mongodb_client.health_check()
+            status["services"]["mongodb"] = "healthy" if mongo_ok else "unhealthy"
+        else:
+            status["services"]["mongodb"] = "disabled"
+        
+        # Check queue depths
+        try:
+            redis_client = app.state.redis_client
+            status["queues"] = {
+                "direct": redis_client.get_stream_info(app.state.config.AUDIO_INPUT_STREAM).get("length", 0),
+                "chunks": redis_client.get_stream_info(app.state.config.AUDIO_CHUNK_STREAM).get("length", 0),
+                "medical": redis_client.get_stream_info(app.state.config.MEDICAL_EXTRACTION_STREAM).get("length", 0)
+            }
+        except:
+            pass
+        
+        return status
     
     # Root endpoint
     @app.get("/")
@@ -246,36 +249,12 @@ def create_app(config_name=None):
 
 
 def setup_middleware(app: FastAPI, config_obj):
-    """Setup FastAPI middleware with proper CORS"""
+    """FIXED: CORS handled by nginx only to prevent duplicate headers"""
     
-    # FIXED: Enhanced CORS middleware with more permissive settings for development
-    allowed_origins = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-        "https://maichart.maihealth.io",
-        "https://www.maichart.maihealth.io"
-    ]
+    # CORS removed - nginx handles it
+    # This prevents duplicate Access-Control-* headers
     
-    # In development, be more permissive
-    if config_obj.DEBUG:
-        allowed_origins.extend([
-            "http://localhost:*",
-            "http://127.0.0.1:*",
-            "*"  # Allow all origins in development
-        ])
-    
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"] if config_obj.DEBUG else allowed_origins,  # Allow all in dev
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-        max_age=3600,
-    )
-    
-    # Trusted host middleware (for production)
+    # Trusted host middleware (for production only)
     if not config_obj.DEBUG:
         app.add_middleware(
             TrustedHostMiddleware, 

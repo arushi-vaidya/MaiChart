@@ -39,86 +39,55 @@ class AudioHandler:
         )
 
     async def save_uploaded_file(self, file: UploadFile, timestamp=None):
-        """Save uploaded audio file and route to appropriate processing pipeline"""
+        """FIXED: Simple Docker path handling"""
         try:
-            # Generate unique session ID
             session_id = str(uuid.uuid4())
-
-            # Use provided timestamp or current time
+            
             if timestamp is None:
                 timestamp = str(int(time.time() * 1000))
 
-            # Create filename with session ID and timestamp
+            # Simple filename construction
             file_extension = self.get_file_extension(file.filename)
             filename = f"{session_id}_{timestamp}{file_extension}"
             filepath = self.config.UPLOAD_FOLDER / filename
 
-            # Save file asynchronously
-            # FIXED: Ensure upload directory exists
+            # Ensure directory exists
             self.config.UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
-            # FIXED: Save file asynchronously with proper error handling
-            logger.info(f"💾 Saving uploaded file: {filepath}")
-
+            # Save file
+            await file.seek(0)
             file_size = 0
-            try:
-                # Reset file pointer to beginning
-                await file.seek(0)
+            
+            async with aiofiles.open(filepath, 'wb') as f:
+                content = await file.read()
+                if not content:
+                    raise ValueError("Uploaded file is empty")
+                await f.write(content)
+                file_size = len(content)
+            
+            # Verify file saved
+            if not filepath.exists():
+                raise FileNotFoundError(f"File not saved: {filepath}")
                 
-                async with aiofiles.open(filepath, 'wb') as f:
-                    # Read file content
-                    content = await file.read()
-                    if not content:
-                        raise ValueError("Uploaded file is empty")
-                    
-                    # Write content to file
-                    await f.write(content)
-                    file_size = len(content)
-                    
-                logger.info(f"✅ File saved successfully: {filepath} ({file_size} bytes)")
-                
-                # FIXED: Verify file was actually saved
-                if not filepath.exists():
-                    raise FileNotFoundError(f"File was not saved properly: {filepath}")
-                    
-                # Double-check file size
-                actual_file_size = filepath.stat().st_size
-                if actual_file_size == 0:
-                    raise ValueError("Saved file is empty")
-                    
-                if actual_file_size != file_size:
-                    logger.warning(f"File size mismatch: expected {file_size}, got {actual_file_size}")
-                    file_size = actual_file_size
-                    
-            except Exception as e:
-                logger.error(f"❌ Error saving file: {e}")
-                # Clean up partial file if it exists
-                if filepath.exists():
-                    try:
-                        filepath.unlink()
-                    except:
-                        pass
-                raise ValueError(f"Failed to save uploaded file: {e}")
+            actual_size = filepath.stat().st_size
+            if actual_size == 0:
+                raise ValueError("Saved file is empty")
 
-            # Get file info
-            file_size = actual_file_size  # Use the verified file size from above
+            # Get duration
             duration = self.chunker.get_audio_duration(str(filepath))
 
-            logger.info(
-                f"📊 File saved - Size: {file_size} bytes, Duration: {duration:.1f}s"
-            )
+            logger.info(f"📊 Saved: {filepath} ({actual_size} bytes, {duration:.1f}s)")
 
-            # Decide processing strategy based on file characteristics
-            # Decide processing strategy based on file characteristics
+            # Decide processing strategy
             if self.chunker.should_chunk_audio(str(filepath), self.config.CHUNK_DURATION):
-                logger.info("🚛 Large file detected - using chunked processing")
-                return self._process_chunked_audio(session_id, filename, filepath, file_size, timestamp, duration)
+                logger.info("🚛 Using chunked processing")
+                return self._process_chunked_audio(session_id, filename, filepath, actual_size, timestamp, duration)
             else:
-                logger.info("🚗 Small file detected - using direct processing") 
-                return self._process_direct_audio(session_id, filename, filepath, file_size, timestamp, duration)
+                logger.info("🚗 Using direct processing")
+                return self._process_direct_audio(session_id, filename, filepath, actual_size, timestamp, duration)
 
         except Exception as e:
-            logger.error(f"❌ Error saving uploaded file: {e}")
+            logger.error(f"❌ Save error: {e}")
             raise
 
     def _process_chunked_audio(
@@ -190,44 +159,22 @@ class AudioHandler:
             logger.error(f"❌ Error in chunked processing: {e}")
             raise
 
-    def _process_direct_audio(
-        self, session_id, filename, filepath, file_size, timestamp, duration
-    ):
-        """Process small audio files directly (original method)"""
-        # FIXED: Verify file exists and is fully written before queuing
-        if not os.path.exists(filepath):
-            raise FileNotFoundError(f"Audio file not found for direct processing: {filepath}")
-        
-        # FIXED: Use proper file synchronization instead of sleep
-        import time
-        max_retries = 10
-        for attempt in range(max_retries):
-            if os.path.exists(filepath) and os.path.getsize(filepath) == file_size:
-                break
-            time.sleep(0.1)  # Wait 100ms between checks
-        else:
-            raise FileNotFoundError(f"File not properly written after {max_retries} attempts: {filepath}")
-        
-        # Double-check file exists and has correct size
-        if not os.path.exists(filepath):
-            raise FileNotFoundError(f"Audio file disappeared after sync delay: {filepath}")
-        
-        actual_size = os.path.getsize(filepath)
-        if actual_size != file_size:
-            logger.warning(f"File size mismatch after sync: expected {file_size}, got {actual_size}")
-            file_size = actual_size
-        
+    def _process_direct_audio(self, session_id, filename, filepath, file_size, timestamp, duration):
+        """FIXED: Direct processing with simple paths"""
         try:
-            # Queue for direct processing
+            # Verify file exists
+            if not os.path.exists(filepath):
+                raise FileNotFoundError(f"File not found: {filepath}")
+            
+            # Queue for processing - filepath as string
             stream_id = self.queue_for_processing(
-                session_id, filename, str(filepath), file_size,  # <-- FIXED
-                str(int(datetime.now().timestamp() * 1000))
+                session_id, filename, str(filepath), file_size, timestamp
             )
 
-            # Add duration info
+            # Update with duration
             self.redis_client.update_session_status(
                 session_id, {
-                    "processing_strategy": "direct", 
+                    "processing_strategy": "direct",
                     "audio_duration": duration,
                     "duration": duration
                 }
@@ -236,7 +183,7 @@ class AudioHandler:
             return {
                 "session_id": session_id,
                 "filename": filename,
-                "filepath": filepath,
+                "filepath": str(filepath),
                 "file_size": file_size,
                 "timestamp": timestamp,
                 "duration": duration,
@@ -245,17 +192,16 @@ class AudioHandler:
             }
 
         except Exception as e:
-            logger.error(f"❌ Error in direct processing: {e}")
+            logger.error(f"❌ Direct processing error: {e}")
             raise
 
     def _queue_chunks_for_processing(self, session_id, chunks_info):
-        """Queue individual chunks for parallel processing"""
+        """Queue chunks with proper error handling"""
         try:
             queued_count = 0
             chunk_stream = self.config.AUDIO_CHUNK_STREAM
 
             for chunk_info in chunks_info:
-                # Prepare chunk data for Redis stream
                 chunk_data = {
                     "session_id": session_id,
                     "chunk_id": chunk_info["chunk_id"],
@@ -269,10 +215,10 @@ class AudioHandler:
                     "type": "chunk_processing",
                 }
 
-                # Add to chunk processing stream
+                # Add to stream FIRST
                 stream_id = self.redis_client.add_to_stream(chunk_stream, chunk_data)
 
-                # Store chunk status
+                # THEN store chunk status
                 chunk_status_key = f"chunk_status:{chunk_info['chunk_id']}"
                 self.redis_client.client.hset(
                     chunk_status_key,
@@ -288,9 +234,7 @@ class AudioHandler:
                 )
 
                 queued_count += 1
-                logger.debug(
-                    f"📤 Queued chunk {chunk_info['chunk_index']} -> {stream_id}"
-                )
+                logger.debug(f"📤 Chunk {chunk_info['chunk_index']} -> {stream_id}")
 
             return queued_count
 
@@ -299,49 +243,26 @@ class AudioHandler:
             return 0
 
     def queue_for_processing(self, session_id, filename, filepath, file_size, timestamp):
-        """FIXED: Add audio file to processing queue with proper stream management"""
+        """FIXED: Set session status AFTER successful queue addition"""
         try:
-            # Clear any stuck messages first
-            self._clear_stuck_messages()
-            
-            # FIXED: Ensure we use the correct local path, not Docker paths
-            logger.info(f"🔍 DEBUG: Original filepath: {filepath} (type: {type(filepath)})")
-            
-            if isinstance(filepath, str):
-                # If it's a string path, convert to Path and ensure it's absolute
-                filepath = Path(filepath)
-                logger.info(f"🔍 DEBUG: Converted string to Path: {filepath}")
-            elif not isinstance(filepath, Path):
-                filepath = Path(str(filepath))
-                logger.info(f"🔍 DEBUG: Converted to Path: {filepath}")
-            
-            # Ensure the path is absolute and uses the correct base directory
-            if not filepath.is_absolute():
-                filepath = self.config.UPLOAD_FOLDER / filepath.name
-                logger.info(f"🔍 DEBUG: Made absolute: {filepath}")
-            elif str(filepath).startswith('/app/'):
-                # Replace Docker paths with local paths
-                old_path = str(filepath)
-                filepath = self.config.UPLOAD_FOLDER / filepath.name
-                logger.info(f"🔄 Converted Docker path {old_path} to local path: {filepath}")
-            else:
-                logger.info(f"🔍 DEBUG: No conversion needed: {filepath}")
-            
             # Prepare data for Redis stream
             audio_data = {
                 "session_id": session_id,
                 "timestamp": timestamp,
                 "filename": filename,
-                "filepath": str(filepath),  # Ensure string with correct path
-                "file_size": str(file_size),  # Ensure string
+                "filepath": str(filepath),  # Ensure string
+                "file_size": str(file_size),
                 "status": "uploaded",
                 "uploaded_at": datetime.utcnow().isoformat(),
                 "type": "direct_processing",
             }
 
-            # Set initial session status BEFORE adding to stream to prevent race condition
-            # Use update_session_status to avoid overwriting existing statuses
-            self.redis_client.update_session_status(
+            # Add to Redis stream FIRST
+            stream_name = self.config.AUDIO_INPUT_STREAM
+            stream_id = self.redis_client.add_to_stream(stream_name, audio_data)
+            
+            # ONLY set status AFTER successful queue addition
+            self.redis_client.set_session_status(
                 session_id,
                 {
                     "status": "queued",
@@ -350,22 +271,25 @@ class AudioHandler:
                     "file_size": file_size,
                     "filepath": str(filepath),
                     "original_format": self.get_file_extension(filename).lstrip("."),
-                }
+                    "stream_id": stream_id,
+                },
+                expire_seconds=self.config.SESSION_EXPIRE_TIME
             )
 
-            # Add to Redis stream
-            stream_name = self.config.AUDIO_INPUT_STREAM
-            stream_id = self.redis_client.add_to_stream(stream_name, audio_data)
-            
-            # Update session with stream_id
-            self.redis_client.update_session_status(session_id, {"stream_id": stream_id})
-
-            logger.info(f"📤 QUEUED FOR PROCESSING: {session_id} -> {stream_id}")
-            logger.info(f"🎯 Stream: {stream_name}, Group: {self.config.CONSUMER_GROUP}")
+            logger.info(f"📤 QUEUED: {session_id} -> {stream_id}")
             return stream_id
 
         except Exception as e:
-            logger.error(f"❌ Error queuing for processing: {e}")
+            logger.error(f"❌ Error queuing: {e}")
+            # Update status to error if queueing fails
+            try:
+                self.redis_client.update_session_status(session_id, {
+                    "status": "error",
+                    "error": f"Failed to queue: {str(e)}",
+                    "error_at": datetime.utcnow().isoformat()
+                })
+            except:
+                pass
             raise
 
     def get_session_status(self, session_id):
@@ -1032,54 +956,68 @@ class AudioHandler:
             return False
 
     def _merge_streaming_chunks(self, session_id: str, streaming_dir: Path) -> str:
-        """Merge streaming chunks into a single audio file"""
+        """FIXED: FFmpeg-only merge with validation"""
         try:
-            # Find all chunk files
             chunk_files = sorted(streaming_dir.glob("chunk_*.webm"))
             if not chunk_files:
-                logger.error(f"❌ No chunk files found in {streaming_dir}")
+                logger.error(f"❌ No chunks in {streaming_dir}")
                 return None
             
-            logger.info(f"🔗 Merging {len(chunk_files)} streaming chunks for {session_id}")
+            logger.info(f"🔗 Merging {len(chunk_files)} chunks for {session_id}")
             
-            # Create output filename
             merged_filename = f"{session_id}_streaming_merged.webm"
             merged_filepath = self.config.UPLOAD_FOLDER / merged_filename
             
-            # Use ffmpeg to concatenate chunks
-            if self.chunker.ffmpeg_available:
-                success = self._merge_chunks_with_ffmpeg(chunk_files, merged_filepath)
-            else:
-                # Fallback: simple binary concatenation
-                success = self._merge_chunks_binary(chunk_files, merged_filepath)
+            # Only use FFmpeg
+            if not self.chunker.ffmpeg_available:
+                logger.error("❌ FFmpeg not available for merge")
+                return None
+            
+            success = self._merge_chunks_with_ffmpeg(chunk_files, merged_filepath)
             
             if success and merged_filepath.exists():
-                # Cleanup chunk files and directory
+                # Validate merged file
+                file_size = merged_filepath.stat().st_size
+                if file_size < 1000:
+                    logger.error(f"❌ Merged file too small: {file_size} bytes")
+                    return None
+                
+                # Verify audio is valid
+                duration = self.chunker.get_audio_duration(str(merged_filepath))
+                if duration <= 0:
+                    logger.error("❌ Merged file has invalid duration")
+                    return None
+                
+                logger.info(f"✅ Merge verified: {file_size} bytes, {duration:.1f}s")
                 self._cleanup_streaming_chunks(streaming_dir)
-                logger.info(f"✅ Streaming chunks merged successfully: {merged_filepath}")
                 return str(merged_filepath)
             else:
-                logger.error(f"❌ Failed to merge streaming chunks for {session_id}")
+                logger.error("❌ Merge failed")
                 return None
                 
         except Exception as e:
-            logger.error(f"❌ Error merging streaming chunks: {e}")
+            logger.error(f"❌ Merge error: {e}")
             return None
-
+    
     def _merge_chunks_with_ffmpeg(self, chunk_files: List[Path], output_path: Path) -> bool:
-        """Merge chunks using ffmpeg (preferred method)"""
+        """FFmpeg merge with validation"""
         try:
             import subprocess
             import tempfile
             
-            # Create temporary file list for ffmpeg
+            # Verify all chunks exist
+            for chunk in chunk_files:
+                if not chunk.exists():
+                    logger.error(f"❌ Missing chunk: {chunk}")
+                    return False
+            
+            # Create file list for ffmpeg
             with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
                 for chunk_file in chunk_files:
                     f.write(f"file '{chunk_file.absolute()}'\n")
                 filelist_path = f.name
             
             try:
-                # FFmpeg concat command
                 cmd = [
                     "ffmpeg", "-y",
                     "-f", "concat",
@@ -1089,44 +1027,58 @@ class AudioHandler:
                     str(output_path)
                 ]
                 
+                logger.info(f"🔧 FFmpeg: {' '.join(cmd)}")
+                
                 result = subprocess.run(
-                    cmd, capture_output=True, text=True, check=True
+                    cmd, 
+                    capture_output=True, 
+                    text=True, 
+                    check=True,
+                    timeout=300
                 )
                 
-                logger.info("✅ FFmpeg chunk merging completed")
+                logger.info("✅ FFmpeg merge completed")
                 return True
                 
+            except subprocess.TimeoutExpired:
+                logger.error("❌ FFmpeg timeout")
+                return False
             except subprocess.CalledProcessError as e:
-                logger.error(f"❌ FFmpeg merge failed: {e}")
-                logger.error(f"FFmpeg stderr: {e.stderr}")
+                logger.error(f"❌ FFmpeg failed: {e.stderr}")
                 return False
             finally:
-                # Cleanup temp file
                 try:
                     os.unlink(filelist_path)
                 except:
                     pass
                     
         except Exception as e:
-            logger.error(f"❌ Error in FFmpeg merge: {e}")
+            logger.error(f"❌ FFmpeg error: {e}")
             return False
 
-    def _merge_chunks_binary(self, chunk_files: List[Path], output_path: Path) -> bool:
-        """Fallback: merge chunks using binary concatenation"""
+    def _cleanup_streaming_chunks(self, streaming_dir: Path):
+        """Clean up with safety delay"""
         try:
-            logger.info("📎 Using binary concatenation for chunk merging")
+            import time
+            time.sleep(2)  # Allow file handles to close
             
-            with open(output_path, 'wb') as outfile:
-                for chunk_file in chunk_files:
-                    with open(chunk_file, 'rb') as infile:
-                        outfile.write(infile.read())
+            chunk_files = list(streaming_dir.glob("chunk_*.webm"))
+            for chunk_file in chunk_files:
+                try:
+                    if chunk_file.exists():
+                        chunk_file.unlink()
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not delete {chunk_file}: {e}")
             
-            logger.info("✅ Binary chunk merging completed")
-            return True
-            
+            try:
+                if streaming_dir.exists() and not any(streaming_dir.iterdir()):
+                    streaming_dir.rmdir()
+                    logger.info(f"🧹 Cleaned: {streaming_dir}")
+            except OSError as e:
+                logger.warning(f"⚠️ Could not remove dir: {e}")
+                    
         except Exception as e:
-            logger.error(f"❌ Binary merge failed: {e}")
-            return False
+            logger.warning(f"⚠️ Cleanup error: {e}")
 
     def _cleanup_streaming_chunks(self, streaming_dir: Path):
         """Clean up streaming chunk files and directory"""

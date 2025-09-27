@@ -226,11 +226,11 @@ async def trigger_medical_extraction(session_id: str, request: Request, config=D
         raise HTTPException(status_code=500, detail="Failed to trigger medical extraction")
 
 def generate_medical_alerts_from_data(medical_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Generate medical alerts from extracted medical data - FIXED"""
+    """FIXED: Generate alerts with null/type safety"""
     alerts = []
     
     try:
-        # Critical allergies alert
+        # Critical allergies
         allergies = medical_data.get("allergies", [])
         if allergies:
             alerts.append({
@@ -242,17 +242,19 @@ def generate_medical_alerts_from_data(medical_data: Dict[str, Any]) -> List[Dict
                 "action_required": "Verify before prescribing medications"
             })
         
-        # High severity symptoms
+        # High severity symptoms - FIXED null checks
         complaint_details = medical_data.get("chief_complaint_details", [])
         high_severity_complaints = []
+        
         for complaint in complaint_details:
-            # FIXED: Handle None values properly
-            severity = complaint.get("severity") or ""
-            if isinstance(severity, str):  # FIXED: Check if severity is string
+            severity = complaint.get("severity")
+            
+            # FIXED: Handle None, empty, non-string
+            if severity and isinstance(severity, str):
                 severity_lower = severity.lower()
                 if ("high" in severity_lower or 
-                    any(num in severity for num in ["8", "9", "10"]) or
-                    "severe" in severity_lower):
+                    "severe" in severity_lower or
+                    any(num in severity for num in ["8", "9", "10"])):
                     high_severity_complaints.append(complaint)
         
         if high_severity_complaints:
@@ -260,7 +262,7 @@ def generate_medical_alerts_from_data(medical_data: Dict[str, Any]) -> List[Dict
                 "type": "high_severity",
                 "priority": "high",
                 "title": "🚨 HIGH SEVERITY SYMPTOMS",
-                "message": f"{len(high_severity_complaints)} high-severity complaints identified",
+                "message": f"{len(high_severity_complaints)} high-severity complaints",
                 "details": [c.get("complaint", "Unknown") for c in high_severity_complaints],
                 "action_required": "Immediate medical attention may be required"
             })
@@ -274,7 +276,7 @@ def generate_medical_alerts_from_data(medical_data: Dict[str, Any]) -> List[Dict
                 "title": "📋 MULTIPLE CHRONIC CONDITIONS",
                 "message": f"Patient has {len(chronic_diseases)} chronic conditions",
                 "details": chronic_diseases,
-                "action_required": "Consider drug interactions and comprehensive care plan"
+                "action_required": "Consider drug interactions"
             })
         
         # Multiple medications
@@ -286,16 +288,16 @@ def generate_medical_alerts_from_data(medical_data: Dict[str, Any]) -> List[Dict
                 "title": "💊 MULTIPLE MEDICATIONS",
                 "message": f"Patient taking {len(medications)} medications",
                 "details": medications,
-                "action_required": "Review for potential drug interactions"
+                "action_required": "Review for interactions"
             })
         
-        # No alerts case
+        # Default if no alerts
         if not alerts:
             alerts.append({
                 "type": "no_alerts",
                 "priority": "low",
                 "title": "✅ NO CRITICAL ALERTS",
-                "message": "No immediate medical alerts identified",
+                "message": "No immediate medical alerts",
                 "details": [],
                 "action_required": "Continue routine care"
             })
@@ -303,12 +305,12 @@ def generate_medical_alerts_from_data(medical_data: Dict[str, Any]) -> List[Dict
         return alerts
         
     except Exception as e:
-        logger.error(f"Error generating medical alerts: {e}")
+        logger.error(f"Alert generation error: {e}")
         return [{
             "type": "error",
             "priority": "high",
-            "title": "❌ ALERT GENERATION ERROR",
-            "message": f"Error processing medical alerts: {str(e)}",
+            "title": "❌ ALERT ERROR",
+            "message": f"Error processing alerts: {str(e)}",
             "details": [],
             "action_required": "Manual review required"
         }]

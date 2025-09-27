@@ -191,95 +191,78 @@ class FixedTranscriptionWorker(BaseWorker):
             return filepath
 
     def transcribe_audio(self, audio_file_path: str, chunk_info: dict = None) -> dict:
-        """FIXED: Enhanced transcribe method with better error handling and timeouts"""
+        """FIXED: Dynamic timeout based on file size"""
         try:
             chunk_desc = ""
             if chunk_info:
-                chunk_desc = f" (chunk {chunk_info.get('chunk_index', '?')} of session {chunk_info.get('session_id', '?')})"
+                chunk_desc = f" (chunk {chunk_info.get('chunk_index', '?')} of {chunk_info.get('session_id', '?')})"
 
-            logger.info(f"🎵 Starting transcription of {audio_file_path}{chunk_desc}")
+            logger.info(f"🎵 Starting transcription: {audio_file_path}{chunk_desc}")
 
-            # FIXED: Check if file exists with better error handling
+            # Verify file exists
             if not os.path.exists(audio_file_path):
-                error_msg = f"Audio file not found: {audio_file_path}"
-                logger.error(f"❌ {error_msg}")
-                raise FileNotFoundError(error_msg)
+                raise FileNotFoundError(f"Audio file not found: {audio_file_path}")
 
             # Check file size
-            try:
-                file_size = os.path.getsize(audio_file_path)
-                logger.info(f"📊 File size: {file_size} bytes ({file_size / (1024 * 1024):.2f} MB)")
+            file_size = os.path.getsize(audio_file_path)
+            logger.info(f"📊 File size: {file_size} bytes ({file_size / (1024 * 1024):.2f} MB)")
 
-                if file_size == 0:
-                    error_msg = "Audio file is empty"
-                    logger.error(f"❌ {error_msg}")
-                    raise ValueError(error_msg)
+            if file_size == 0:
+                raise ValueError("Audio file is empty")
 
-                # FIXED: Check for reasonable file size limits
-                if file_size > 100 * 1024 * 1024:  # 100MB limit
-                    error_msg = f"Audio file too large: {file_size} bytes"
-                    logger.error(f"❌ {error_msg}")
-                    raise ValueError(error_msg)
+            if file_size > 100 * 1024 * 1024:
+                raise ValueError(f"File too large: {file_size} bytes")
 
-            except OSError as e:
-                error_msg = f"Cannot access file: {audio_file_path} - {e}"
-                logger.error(f"❌ {error_msg}")
-                raise FileNotFoundError(error_msg)
+            # FIXED: Calculate timeout - 10 seconds per MB, minimum 5 minutes
+            file_size_mb = file_size / (1024 * 1024)
+            timeout_seconds = max(300, int(file_size_mb * 10))
+            logger.info(f"⏱️ Timeout set to: {timeout_seconds}s for {file_size_mb:.1f}MB file")
 
-            # Enhanced logging for chunks
+            # Log chunk info
             if chunk_info:
-                logger.info(f"📦 Processing chunk: {chunk_info.get('start_time', 0):.1f}s - {chunk_info.get('end_time', 0):.1f}s")
+                logger.info(f"📦 Chunk: {chunk_info.get('start_time', 0):.1f}s - {chunk_info.get('end_time', 0):.1f}s")
 
-            # FIXED: Start transcription with better retry logic and timeout
+            # Start transcription with retry
             max_retries = 3
-            timeout_seconds = 300  # 5 minutes timeout
+            transcript = None
             
             for attempt in range(max_retries):
                 try:
-                    logger.info(f"🤖 Calling AssemblyAI API (attempt {attempt + 1}/{max_retries})...")
+                    logger.info(f"🤖 AssemblyAI attempt {attempt + 1}/{max_retries}...")
                     
-                    # FIXED: Add timeout handling
-                    start_time = time.time()
                     transcript = self.transcriber.transcribe(audio_file_path)
                     
-                    # Wait for completion with timeout
+                    # Wait with dynamic timeout
+                    start_time = time.time()
                     while transcript.status in ['queued', 'processing']:
                         elapsed = time.time() - start_time
                         if elapsed > timeout_seconds:
-                            error_msg = f"Transcription timed out after {timeout_seconds} seconds"
-                            logger.error(f"⏰ {error_msg}")
-                            raise TimeoutError(error_msg)
+                            logger.warning(f"⏰ Timeout after {elapsed:.0f}s, using partial result")
+                            break
                         
-                        logger.info(f"⏳ Transcription in progress... ({elapsed:.0f}s elapsed)")
-                        time.sleep(5)  # Check every 5 seconds
-                        
-                        # Refresh transcript status
-                        try:
-                            # Get updated status (AssemblyAI automatically updates)
-                            pass
-                        except Exception as status_e:
-                            logger.warning(f"⚠️ Could not refresh transcript status: {status_e}")
+                        logger.info(f"⏳ Transcription in progress... ({elapsed:.0f}s)")
+                        time.sleep(5)
                     
-                    logger.info(f"📡 AssemblyAI response status: {transcript.status}")
+                    logger.info(f"📡 Status: {transcript.status}")
                     break
                     
                 except TimeoutError:
-                    raise  # Don't retry on timeout
+                    raise
                 except Exception as e:
                     if attempt == max_retries - 1:
                         raise
-                    logger.warning(f"⚠️ API call failed (attempt {attempt + 1}), retrying: {e}")
-                    time.sleep(2**attempt)  # Exponential backoff
+                    logger.warning(f"⚠️ Attempt {attempt + 1} failed, retrying: {e}")
+                    time.sleep(2**attempt)
 
-            # FIXED: Check for errors with better error messages
+            # Check for errors
             if transcript.status == "error":
                 error_msg = getattr(transcript, "error", "Unknown transcription error")
                 logger.error(f"❌ Transcription failed: {error_msg}")
                 raise RuntimeError(f"Transcription failed: {error_msg}")
 
-            # FIXED: Check if we have text with better handling
+            # Check if we have text
             if not transcript.text or transcript.text.strip() == "":
-                logger.warning(f"⚠️ No speech detected in audio{chunk_desc}")
+                logger.warning(f"⚠️ No speech detected{chunk_desc}")
                 return {
                     "text": "",
                     "confidence": 0.0,
@@ -288,49 +271,38 @@ class FixedTranscriptionWorker(BaseWorker):
                     "warning": "No speech detected in audio",
                 }
 
-            # FIXED: Extract results with better error handling
-            try:
-                confidence = getattr(transcript, "confidence", 0.0)
-                duration = getattr(transcript, "audio_duration", chunk_info.get("duration", 0) if chunk_info else 0)
-                
-                # Ensure confidence is a valid number
-                if confidence is None or not isinstance(confidence, (int, float)):
-                    confidence = 0.0
-                
-                # Ensure duration is a valid number
-                if duration is None or not isinstance(duration, (int, float)):
-                    duration = 0.0
+            # Extract results
+            confidence = getattr(transcript, "confidence", 0.0)
+            duration = getattr(transcript, "audio_duration", chunk_info.get("duration", 0) if chunk_info else 0)
+            
+            if confidence is None or not isinstance(confidence, (int, float)):
+                confidence = 0.0
+            if duration is None or not isinstance(duration, (int, float)):
+                duration = 0.0
 
-                result = {
-                    "text": transcript.text.strip(),
-                    "confidence": float(confidence),
-                    "duration": float(duration),
-                    "words": len(transcript.text.split()) if transcript.text else 0,
-                    "status": "completed",
-                }
+            result = {
+                "text": transcript.text.strip(),
+                "confidence": float(confidence),
+                "duration": float(duration),
+                "words": len(transcript.text.split()) if transcript.text else 0,
+                "status": "completed",
+            }
 
-                # Add chunk-specific info
-                if chunk_info:
-                    result["chunk_index"] = chunk_info.get("chunk_index", 0)
-                    result["start_time"] = chunk_info.get("start_time", 0)
-                    result["end_time"] = chunk_info.get("end_time", 0)
+            if chunk_info:
+                result["chunk_index"] = chunk_info.get("chunk_index", 0)
+                result["start_time"] = chunk_info.get("start_time", 0)
+                result["end_time"] = chunk_info.get("end_time", 0)
 
-                logger.info(f"✅ Transcription completed successfully{chunk_desc}!")
-                logger.info(f"📝 Text length: {len(transcript.text)} characters")
-                logger.info(f"📊 Word count: {result['words']} words")
-                logger.info(f"🎯 Confidence: {result['confidence']:.2f}")
-                logger.info(f"⏱️ Duration: {result['duration']:.1f}s")
+            logger.info(f"✅ Transcription completed{chunk_desc}")
+            logger.info(f"📝 Length: {len(transcript.text)} chars, {result['words']} words")
+            logger.info(f"🎯 Confidence: {result['confidence']:.2f}, Duration: {result['duration']:.1f}s")
 
-                return result
-
-            except Exception as e:
-                logger.error(f"❌ Error extracting transcript results: {e}")
-                raise
+            return result
 
         except Exception as e:
-            logger.error(f"❌ Error during transcription{chunk_desc}: {e}")
+            logger.error(f"❌ Transcription error{chunk_desc}: {e}")
             import traceback
-            logger.error(f"Full traceback: {traceback.format_exc()}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return {"status": "error", "error": str(e), "text": "", "confidence": 0.0}
 
     def auto_queue_medical_extraction(self, session_id: str, transcript_text: str) -> bool:
@@ -470,96 +442,69 @@ class FixedTranscriptionWorker(BaseWorker):
             return False
 
     def _process_direct_message(self, message_data: dict) -> bool:
-        """FIXED: Process a direct transcription message with enhanced error handling"""
+        """FIXED: Simple filepath handling"""
         session_id = None
         try:
             session_id = message_data.get("session_id")
             filepath = message_data.get("filepath")
             filename = message_data.get("filename")
-            message_type = message_data.get("type", "direct_processing")
 
-            logger.info(f"🎯 Processing direct session {session_id}")
+            logger.info(f"🎯 Processing: {session_id}")
             logger.info(f"📁 File: {filename}")
             logger.info(f"📍 Path: {filepath}")
-            logger.info(f"🔄 Message Type: {message_type}")
 
-            # FIXED: Validate required fields
             if not all([session_id, filepath, filename]):
-                logger.error("❌ Missing required fields in direct message")
+                logger.error("❌ Missing required fields")
                 if session_id:
                     self.update_session_status(session_id, {
-                        "status": "error", 
-                        "error": "Missing required fields in message"
+                        "status": "error",
+                        "error": "Missing required fields"
                     })
                 return False
 
-            # Update status to processing
+            # Update to processing
             self.update_session_status(session_id, {
                 "status": "processing",
                 "step": "analyzing_audio",
                 "processing_started_at": datetime.utcnow().isoformat(),
             })
 
-            # FIXED: Check if input file exists with better error handling and path resolution
-            try:
-                logger.info(f"🔍 Checking file existence: {filepath}")
-                
-                # Check if file exists at the given path
-                if not os.path.exists(filepath):
-                    logger.warning(f"⚠️ File not found at original path: {filepath}")
-                    
-                    # Try to resolve the path - convert Docker paths to local paths
-                    resolved_filepath = self._resolve_file_path(filepath)
-                    logger.info(f"🔍 Resolved path: {resolved_filepath}")
-                    
-                    if os.path.exists(resolved_filepath):
-                        logger.info(f"✅ File found at resolved path: {resolved_filepath}")
-                        filepath = resolved_filepath
-                    else:
-                        error_msg = f"Input file not found: {filepath} (also tried: {resolved_filepath})"
-                        logger.error(f"❌ {error_msg}")
-                        self.update_session_status(session_id, {"status": "error", "error": error_msg})
-                        return False
-                else:
-                    logger.info(f"✅ File found at original path: {filepath}")
-
-                # Check file size
-                file_size = os.path.getsize(filepath)
-                logger.info(f"📊 File size: {file_size} bytes")
-
-                if file_size == 0:
-                    error_msg = "Input file is empty"
-                    logger.error(f"❌ {error_msg}")
-                    self.update_session_status(session_id, {"status": "error", "error": error_msg})
-                    return False
-
-            except OSError as e:
-                error_msg = f"Cannot access input file: {e}"
+            # Simple file check
+            if not os.path.exists(filepath):
+                error_msg = f"File not found: {filepath}"
                 logger.error(f"❌ {error_msg}")
-                self.update_session_status(session_id, {"status": "error", "error": error_msg})
+                self.update_session_status(session_id, {
+                    "status": "error",
+                    "error": error_msg
+                })
                 return False
 
-            # Update status to transcribing (only if we haven't already set an error)
+            file_size = os.path.getsize(filepath)
+            if file_size == 0:
+                error_msg = "File is empty"
+                logger.error(f"❌ {error_msg}")
+                self.update_session_status(session_id, {
+                    "status": "error",
+                    "error": error_msg
+                })
+                return False
+
+            # Transcribe
             self.update_session_status(session_id, {
                 "status": "processing",
                 "step": "processing_audio",
             })
 
-            # Transcribe audio
-            logger.info("🔄 Starting direct transcription...")
             transcript_result = self.transcribe_audio(filepath)
 
             if transcript_result["status"] == "completed":
-                # Update status to saving
                 self.update_session_status(session_id, {
                     "status": "processing",
                     "step": "saving_transcript",
                 })
 
-                # Save transcript
                 transcript_path = self.save_transcript(session_id, transcript_result)
 
-                # FIXED: Prepare status update with safe data handling
                 status_update = {
                     "status": "completed",
                     "transcript_text": transcript_result.get("text", ""),
@@ -569,47 +514,34 @@ class FixedTranscriptionWorker(BaseWorker):
                     "processing_completed_at": datetime.utcnow().isoformat(),
                 }
 
-                # Add duration if available
                 if transcript_result.get("duration"):
                     status_update["audio_duration"] = transcript_result["duration"]
 
-                # Add warning if present
                 if transcript_result.get("warning"):
                     status_update["warning"] = transcript_result["warning"]
 
                 self.update_session_status(session_id, status_update)
 
-                # FIXED: Auto-queue for medical extraction if transcript has content
+                # Auto-queue medical extraction
                 if transcript_result.get("text") and len(transcript_result["text"].strip()) > 10:
-                    medical_queued = self.auto_queue_medical_extraction(session_id, transcript_result["text"])
-                    if medical_queued:
-                        logger.info(f"🏥 Medical extraction auto-queued for session {session_id}")
-                    else:
-                        logger.info(f"⏭️ Medical extraction not queued for session {session_id}")
+                    self.auto_queue_medical_extraction(session_id, transcript_result["text"])
 
-                logger.info(f"🎉 Successfully transcribed direct session {session_id}")
+                logger.info(f"✅ Completed: {session_id}")
                 return True
             else:
-                # Update status to error
                 error_msg = transcript_result.get("error", "Transcription failed")
                 self.update_session_status(session_id, {
                     "status": "error",
                     "error": error_msg,
                     "processing_failed_at": datetime.utcnow().isoformat(),
                 })
-
-                logger.error(f"💥 Failed to transcribe session {session_id}: {error_msg}")
+                logger.error(f"❌ Failed: {session_id}")
                 return False
 
         except Exception as e:
-            logger.error(f"💥 Error processing direct message: {e}")
-            import traceback
-            logger.error(f"Full traceback: {traceback.format_exc()}")
-
-            # Update status to error if we have session_id
+            logger.error(f"❌ Error: {e}")
             if session_id:
                 self.handle_message_error(session_id, e)
-
             return False
 
     def _process_chunk_message(self, message_data: dict) -> bool:

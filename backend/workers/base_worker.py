@@ -171,6 +171,79 @@ class BaseWorker(ABC):
         except Exception as e:
             logger.warning(f"⚠️ Error during consumer group cleanup: {e}")
 
+    def recover_stuck_messages(self):
+        """Claim and process messages stuck for >5 minutes"""
+        try:
+            logger.info(f"🔄 Checking for stuck messages in {self.stream_name}...")
+            
+            stuck_messages = self.redis_client.claim_old_messages(
+                self.stream_name,
+                self.consumer_group,
+                self.consumer_name,
+                min_idle_time=300000  # 5 minutes
+            )
+            
+            if not stuck_messages:
+                logger.info("✅ No stuck messages found")
+                return
+            
+            logger.info(f"🔄 Found {len(stuck_messages)} stuck messages, processing...")
+            
+            for message_id, fields in stuck_messages:
+                try:
+                    retry_count = self.redis_client.get_retry_count(fields)
+                    
+                    if retry_count >= 3:
+                        # Max retries exceeded - send to DLQ
+                        logger.warning(f"💀 Max retries for {message_id}, moving to DLQ")
+                        self.send_to_dead_letter_queue(message_id, fields, "Max retries exceeded")
+                        self.redis_client.acknowledge_message(
+                            self.stream_name, self.consumer_group, message_id
+                        )
+                    else:
+                        # Increment retry and process
+                        fields = self.redis_client.increment_retry_count(fields)
+                        logger.info(f"🔄 Retry {retry_count + 1}/3 for {message_id}")
+                        
+                        success = self.process_message(fields)
+                        
+                        if success:
+                            self.redis_client.acknowledge_message(
+                                self.stream_name, self.consumer_group, message_id
+                            )
+                            logger.info(f"✅ Recovered message {message_id}")
+                        else:
+                            logger.warning(f"⚠️ Recovery failed for {message_id}, will retry later")
+                            
+                except Exception as e:
+                    logger.error(f"❌ Error recovering {message_id}: {e}")
+                    
+        except Exception as e:
+            logger.warning(f"⚠️ Recovery process error: {e}")
+
+    def send_to_dead_letter_queue(self, message_id, message_data, error):
+        """Move failed messages to DLQ"""
+        try:
+            dlq_stream = f"{self.stream_name}_dlq"
+            
+            dlq_data = {
+                "original_message_id": message_id,
+                "original_stream": self.stream_name,
+                "error": str(error),
+                "failed_at": datetime.utcnow().isoformat(),
+                "retry_count": message_data.get("retry_count", "0"),
+            }
+            
+            # Add original data
+            for key, value in message_data.items():
+                dlq_data[f"original_{key}"] = value
+            
+            self.redis_client.add_to_stream(dlq_stream, dlq_data)
+            logger.info(f"💀 Moved to DLQ: {message_id} -> {dlq_stream}")
+            
+        except Exception as e:
+            logger.error(f"❌ DLQ error: {e}")
+
     def ensure_consumer_group_exists(self):
         """Ensure consumer group exists and is properly configured"""
         try:
@@ -225,34 +298,32 @@ class BaseWorker(ABC):
             logger.warning(f"⚠️ Error during message recovery: {e}")
 
     def run(self):
-        """FIXED: Enhanced run method with proper message processing"""
+        """FIXED: Enhanced run with recovery and proper acknowledgment"""
         logger.info(f"🚀 Starting {self.worker_name}...")
 
         if not self.check_dependencies():
-            logger.error("❌ Dependency check failed. Exiting.")
+            logger.error("❌ Dependency check failed")
             return 1
 
         self.ensure_consumer_group_exists()
         
-        # Clean up any pending messages from previous runs
-        self.cleanup_consumer_group()
+        # Recover stuck messages on startup
+        self.recover_stuck_messages()
 
         consecutive_errors = 0
         max_consecutive_errors = 5
-        heartbeat_interval = 30  # Log heartbeat every 30 seconds
+        heartbeat_interval = 30
         last_heartbeat = time.time()
 
-        logger.info(f"✅ {self.worker_name} ready to process messages")
+        logger.info(f"✅ {self.worker_name} ready")
 
         while self.running:
             try:
-                # Log heartbeat to show worker is alive
                 current_time = time.time()
                 if current_time - last_heartbeat >= heartbeat_interval:
-                    logger.info(f"💓 {self.worker_name} heartbeat - waiting for messages...")
+                    logger.info(f"💓 Heartbeat - waiting for messages...")
                     last_heartbeat = current_time
 
-                # FIXED: Use the Redis client's read_stream method
                 messages = self.redis_client.read_stream(
                     self.stream_name,
                     self.consumer_group,
@@ -262,67 +333,73 @@ class BaseWorker(ABC):
                 )
 
                 if not messages:
-                    consecutive_errors = 0  # Reset error counter on successful read
+                    consecutive_errors = 0
                     continue
 
-                # Process each message
                 for stream, stream_messages in messages:
                     for message_id, fields in stream_messages:
-                        logger.info(f"📨 Processing message {message_id}")
+                        logger.info(f"📨 Processing {message_id}")
 
                         try:
-                            # Process the message
+                            # Check retry count
+                            retry_count = self.redis_client.get_retry_count(fields)
+                            
+                            if retry_count >= 3:
+                                logger.warning(f"💀 Max retries for {message_id}")
+                                session_id = fields.get("session_id")
+                                self.send_to_dead_letter_queue(
+                                    message_id, fields, "Max retries exceeded"
+                                )
+                                self.redis_client.acknowledge_message(
+                                    self.stream_name, self.consumer_group, message_id
+                                )
+                                continue
+                            
+                            # Increment retry count
+                            if retry_count > 0:
+                                fields = self.redis_client.increment_retry_count(fields)
+                                logger.info(f"🔄 Retry {retry_count + 1}/3")
+                            
+                            # Process message
                             success = self.process_message(fields)
 
-                            # FIXED: Always acknowledge the message regardless of success
-                            # This prevents stuck messages in the queue
-                            self.redis_client.acknowledge_message(
-                                self.stream_name, self.consumer_group, message_id
-                            )
-                            
                             if success:
-                                logger.info(f"✅ Message {message_id} processed successfully and acknowledged")
-                                consecutive_errors = 0  # Reset error counter on success
+                                # Only acknowledge on success
+                                self.redis_client.acknowledge_message(
+                                    self.stream_name, self.consumer_group, message_id
+                                )
+                                logger.info(f"✅ Completed {message_id}")
+                                consecutive_errors = 0
                             else:
-                                logger.error(f"❌ Message {message_id} failed but acknowledged to prevent queue blocking")
+                                # Don't acknowledge - let it retry
+                                logger.error(f"❌ Failed {message_id}, will retry")
 
                         except Exception as e:
-                            logger.error(f"❌ Error processing message {message_id}: {e}")
-
-                            # Try to update session status if we have session_id
+                            logger.error(f"❌ Processing error: {e}")
+                            
                             session_id = fields.get("session_id")
                             if session_id:
                                 try:
                                     self.handle_message_error(session_id, e)
-                                except Exception as status_e:
-                                    logger.error(f"❌ Failed to update error status: {status_e}")
-
-                            # FIXED: Still acknowledge the message to prevent queue blocking
-                            try:
-                                self.redis_client.acknowledge_message(
-                                    self.stream_name, self.consumer_group, message_id
-                                )
-                                logger.info(f"❌ Failed message {message_id} acknowledged to prevent queue blocking")
-                            except Exception as ack_error:
-                                logger.error(f"❌ Failed to acknowledge message {message_id}: {ack_error}")
-
+                                except:
+                                    pass
+                            
+                            # Don't acknowledge - let it retry
                             consecutive_errors += 1
 
             except KeyboardInterrupt:
-                logger.info("📨 Received keyboard interrupt")
+                logger.info("📨 Keyboard interrupt")
                 break
             except Exception as e:
-                logger.error(f"❌ Error in worker loop: {e}")
+                logger.error(f"❌ Loop error: {e}")
                 consecutive_errors += 1
                 
-                # If we have too many consecutive errors, exit
                 if consecutive_errors >= max_consecutive_errors:
-                    logger.error(f"❌ Too many consecutive errors ({consecutive_errors}), exiting")
+                    logger.error(f"❌ Too many errors ({consecutive_errors}), exiting")
                     break
                     
-                # Exponential backoff with max
                 sleep_time = min(5 * consecutive_errors, 30)
-                logger.info(f"⏳ Sleeping {sleep_time}s before retry...")
+                logger.info(f"⏳ Sleeping {sleep_time}s...")
                 time.sleep(sleep_time)
 
         logger.info(f"🛑 {self.worker_name} stopped")

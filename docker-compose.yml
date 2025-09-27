@@ -1,8 +1,26 @@
-# docker-compose.yml - FIXED: Using .env file for configuration
-version: '3.8'
+# docker-compose.yml - FIXED with Redis service
+version: "3.8"
 
 services:
-  # MongoDB Database - Local for development
+  # Redis Service - ADDED
+  redis:
+    image: redis:7-alpine
+    container_name: maichart_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - maichart_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes
+
+  # MongoDB Database
   mongodb:
     image: mongo:7.0
     container_name: maichart_mongodb
@@ -27,7 +45,7 @@ services:
 
   # FastAPI Backend Server
   backend:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: maichart_backend
@@ -41,11 +59,15 @@ services:
     env_file:
       - .env
     environment:
-      # Override Docker-specific settings
       - FASTAPI_HOST=0.0.0.0
+      - REDIS_HOST=redis
       - MONGODB_CONNECTION_STRING=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/${MONGODB_DATABASE_NAME}?authSource=admin
+      - MEDICAL_EXTRACTION_STREAM=medical_extraction_queue
+      - MEDICAL_EXTRACTION_CONSUMER_GROUP=medical_extractors
     restart: unless-stopped
     depends_on:
+      redis:
+        condition: service_healthy
       mongodb:
         condition: service_healthy
     healthcheck:
@@ -59,7 +81,7 @@ services:
 
   # Direct Transcription Worker
   transcription_worker_direct:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: maichart_transcription_direct
@@ -73,18 +95,21 @@ services:
     environment:
       - WORKER_TYPE=direct
       - PYTHONUNBUFFERED=1
+      - REDIS_HOST=redis
       - MONGODB_CONNECTION_STRING=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/${MONGODB_DATABASE_NAME}?authSource=admin
     command: python workers/transcription_worker.py direct
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - maichart_network
 
   # Chunk Transcription Worker
   transcription_worker_chunk:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: maichart_transcription_chunk
@@ -98,18 +123,21 @@ services:
     environment:
       - WORKER_TYPE=chunk
       - PYTHONUNBUFFERED=1
+      - REDIS_HOST=redis
       - MONGODB_CONNECTION_STRING=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/${MONGODB_DATABASE_NAME}?authSource=admin
     command: python workers/transcription_worker.py chunk
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - maichart_network
 
   # Enhanced Medical Extraction Worker
   medical_extraction_worker:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: maichart_medical_extraction
@@ -123,11 +151,16 @@ services:
     environment:
       - WORKER_TYPE=medical_extraction
       - PYTHONUNBUFFERED=1
+      - REDIS_HOST=redis
       - MONGODB_CONNECTION_STRING=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/${MONGODB_DATABASE_NAME}?authSource=admin
+      - MEDICAL_EXTRACTION_STREAM=medical_extraction_queue
+      - MEDICAL_EXTRACTION_CONSUMER_GROUP=medical_extractors
     command: python workers/enhanced_medical_extraction_worker.py
     restart: unless-stopped
     depends_on:
       backend:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       mongodb:
         condition: service_healthy
@@ -159,4 +192,6 @@ networks:
 
 volumes:
   mongodb_data:
+    driver: local
+  redis_data:
     driver: local

@@ -37,13 +37,16 @@ class MongoDBClient:
         self._setup_collections()
     
     def _connect(self):
-        """Connect to MongoDB and setup database - FIXED to use single database"""
+        """FIXED: Clean connection string"""
         try:
-            # FIXED: Ensure connection string doesn't have database name in URL
+            # Remove database name from connection string
             clean_connection_string = self.connection_string
-            if '/maichart_medical' in clean_connection_string:
-                clean_connection_string = clean_connection_string.replace('/maichart_medical', '')
-                logger.warning("⚠️ Removed database name from connection string to prevent multiple DB creation")
+            
+            if '/' in clean_connection_string.split('://')[-1]:
+                parts = clean_connection_string.rsplit('/', 1)
+                if parts[-1] and parts[-1] != self.database_name:
+                    logger.warning(f"Removing '{parts[-1]}' from connection string")
+                    clean_connection_string = parts[0]
             
             self.client = MongoClient(
                 clean_connection_string,
@@ -53,20 +56,18 @@ class MongoDBClient:
                 maxPoolSize=int(os.getenv("MONGODB_MAX_POOL_SIZE", 50))
             )
             
-            # Test connection
             self.client.admin.command('ping')
             
-            # FIXED: Use the specific database name from environment
+            # Explicitly select database
             self.db = self.client[self.database_name]
             
-            logger.info(f"✅ Connected to MongoDB database: {self.database_name}")
-            logger.info(f"🏥 Using single database for all medical data: {self.database_name}")
+            logger.info(f"✅ Connected to MongoDB: {self.database_name}")
             
         except ConnectionFailure as e:
-            logger.error(f"❌ Failed to connect to MongoDB: {e}")
+            logger.error(f"❌ MongoDB connection failed: {e}")
             raise
         except Exception as e:
-            logger.error(f"❌ Unexpected error connecting to MongoDB: {e}")
+            logger.error(f"❌ Unexpected error: {e}")
             raise
     
     def _setup_collections(self):

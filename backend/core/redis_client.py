@@ -202,3 +202,55 @@ class RedisClient:
         except Exception as e:
             logger.error(f"Error acknowledging message {message_id}: {e}")
             raise
+    
+    def claim_old_messages(self, stream_name: str, consumer_group: str, consumer_name: str, min_idle_time: int = 300000):
+        """Claim messages idle for more than 5 minutes"""
+        try:
+            # Get pending messages
+            pending = self.client.xpending_range(
+                stream_name, consumer_group, "-", "+", 100
+            )
+            
+            claimed_messages = []
+            for msg in pending:
+                message_id = msg["message_id"]
+                idle_time = msg["time_since_delivered"]
+                
+                if idle_time > min_idle_time:
+                    try:
+                        # Claim ownership
+                        claimed = self.client.xclaim(
+                            stream_name,
+                            consumer_group,
+                            consumer_name,
+                            min_idle_time=min_idle_time,
+                            message_ids=[message_id]
+                        )
+                        
+                        if claimed:
+                            # Parse claimed message
+                            for stream_claimed in claimed:
+                                claimed_messages.append((stream_claimed[0], stream_claimed[1]))
+                            logger.info(f"⚡ Claimed stuck message: {message_id}")
+                            
+                    except Exception as e:
+                        logger.warning(f"Could not claim {message_id}: {e}")
+            
+            return claimed_messages
+            
+        except Exception as e:
+            logger.error(f"Error claiming messages: {e}")
+            return []
+
+    def get_retry_count(self, message_data: dict) -> int:
+        """Get retry count from message data"""
+        try:
+            return int(message_data.get("retry_count", 0))
+        except:
+            return 0
+
+    def increment_retry_count(self, message_data: dict) -> dict:
+        """Increment retry count in message data"""
+        retry_count = self.get_retry_count(message_data)
+        message_data["retry_count"] = str(retry_count + 1)
+        return message_data
