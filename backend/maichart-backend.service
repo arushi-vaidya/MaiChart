@@ -1,0 +1,25 @@
+[Unit]
+Description=MaiChart Medical Transcription Backend
+After=network.target
+Wants=network.target
+
+[Service]
+Type=forking
+User=arushivaidya
+Group=arushivaidya
+WorkingDirectory=/Users/arushivaidya/Desktop/MaiHealth/MaiChart/backend
+ExecStart=/Users/arushivaidya/Desktop/MaiHealth/MaiChart/backend/start_all.sh backend
+ExecStop=/Users/arushivaidya/Desktop/MaiHealth/MaiChart/backend/start_all.sh stop
+ExecReload=/Users/arushivaidya/Desktop/MaiHealth/MaiChart/backend/start_all.sh restart
+PIDFile=/Users/arushivaidya/Desktop/MaiHealth/MaiChart/backend/pids/fastapi.pid
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Environment variables
+Environment=PATH=/Users/arushivaidya/Desktop/MaiHealth/MaiChart/backend/venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONPATH=/Users/arushivaidya/Desktop/MaiHealth/MaiChart/backend
+
+[Install]
+WantedBy=multi-user.target

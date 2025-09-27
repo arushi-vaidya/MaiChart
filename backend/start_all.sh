@@ -13,18 +13,30 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Print functions
+print_status() { echo -e "${GREEN}✅ $1${NC}"; }
+print_error() { echo -e "${RED}❌ $1${NC}"; }
+print_info() { echo -e "${BLUE}ℹ️ $1${NC}"; }
+print_warning() { echo -e "${YELLOW}⚠️ $1${NC}"; }
+
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/logs"
 PID_DIR="$SCRIPT_DIR/pids"
 
+# Load environment variables from .env file
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+    print_info "Loading environment variables from .env file..."
+    set -a  # automatically export all variables
+    source "$SCRIPT_DIR/.env"
+    set +a  # stop automatically exporting
+    print_status "Environment variables loaded"
+else
+    print_warning "No .env file found at $SCRIPT_DIR/.env"
+fi
+
 # Ensure directories exist
 mkdir -p "$LOG_DIR" "$PID_DIR"
-
-print_status() { echo -e "${GREEN}✅ $1${NC}"; }
-print_error() { echo -e "${RED}❌ $1${NC}"; }
-print_info() { echo -e "${BLUE}ℹ️ $1${NC}"; }
-print_warning() { echo -e "${YELLOW}⚠️ $1${NC}"; }
 
 # Check if service is running
 is_service_running() {
@@ -163,7 +175,7 @@ check_dependencies() {
 
 # Show service status
 show_worker_status() {
-    local services=("transcription_direct" "transcription_chunk" "medical_extraction")
+    local services=("fastapi" "transcription_direct" "transcription_chunk" "medical_extraction")
     local total_services=0
     local running_services=0
     
@@ -185,11 +197,59 @@ show_worker_status() {
     
     echo ""
     if [[ $running_services -eq $total_services ]]; then
-        print_status "All workers are running ($running_services/$total_services)"
+        print_status "All services are running ($running_services/$total_services)"
+        print_info "Backend API available at: http://localhost:5001"
+        print_info "API documentation at: http://localhost:5001/docs"
     elif [[ $running_services -gt 0 ]]; then
-        print_warning "Some workers are running ($running_services/$total_services)"
+        print_warning "Some services are running ($running_services/$total_services)"
     else
-        print_error "No workers are running (0/$total_services)"
+        print_error "No services are running (0/$total_services)"
+    fi
+}
+
+# Start FastAPI backend server
+start_fastapi_server() {
+    local pid_file="$PID_DIR/fastapi.pid"
+    local log_file="$LOG_DIR/fastapi.log"
+    
+    if is_service_running "fastapi"; then
+        print_warning "FastAPI server is already running"
+        return 0
+    fi
+    
+    print_info "Starting FastAPI backend server..."
+    
+    # Activate virtual environment
+    if [[ -f "$SCRIPT_DIR/venv/bin/activate" ]]; then
+        source "$SCRIPT_DIR/venv/bin/activate"
+        print_info "Virtual environment activated"
+    fi
+    
+    # Set environment variables
+    export PYTHONPATH="$SCRIPT_DIR"
+    export PYTHONUNBUFFERED=1
+    
+    # Start FastAPI server as daemon
+    nohup uvicorn app:app --host 0.0.0.0 --port 5001 --workers 1 >> "$log_file" 2>&1 &
+    local pid=$!
+    
+    # Save PID
+    echo $pid > "$pid_file"
+    
+    # Wait and verify
+    sleep 5
+    
+    if kill -0 "$pid" 2>/dev/null; then
+        print_status "FastAPI server started successfully (PID: $pid)"
+        print_info "Backend API available at: http://localhost:5001"
+        print_info "API documentation at: http://localhost:5001/docs"
+        return 0
+    else
+        print_error "FastAPI server failed to start"
+        rm -f "$pid_file"
+        echo "Last 10 lines of log:"
+        tail -n 10 "$log_file" 2>/dev/null || echo "No log data available"
+        return 1
     fi
 }
 
@@ -221,6 +281,28 @@ start_all_workers() {
     
     sleep 3
     print_status "All workers startup completed!"
+}
+
+# Start complete backend (FastAPI + Workers)
+start_complete_backend() {
+    print_info "Starting complete MaiChart backend..."
+    
+    # Check dependencies first
+    if ! check_dependencies; then
+        print_error "Dependency check failed"
+        exit 1
+    fi
+    
+    # Start FastAPI server first
+    if ! start_fastapi_server; then
+        print_error "Failed to start FastAPI server"
+        exit 1
+    fi
+    
+    # Start all workers
+    start_all_workers
+    
+    print_status "Complete backend startup completed!"
     show_worker_status
 }
 
@@ -237,12 +319,33 @@ stop_all_workers() {
     print_status "All workers stopped"
 }
 
+# Stop complete backend (FastAPI + Workers)
+stop_complete_backend() {
+    print_info "Stopping complete MaiChart backend..."
+    
+    # Stop workers first
+    stop_all_workers
+    
+    # Stop FastAPI server
+    stop_service "fastapi"
+    
+    print_status "Complete backend stopped"
+}
+
 # Restart all workers
 restart_all_workers() {
     print_info "Restarting all MaiChart workers..."
     stop_all_workers
     sleep 3
     start_all_workers
+}
+
+# Restart complete backend
+restart_complete_backend() {
+    print_info "Restarting complete MaiChart backend..."
+    stop_complete_backend
+    sleep 3
+    start_complete_backend
 }
 
 # View logs
@@ -315,14 +418,23 @@ except Exception as e:
 }
 
 # Main command handling
-case "${1:-start}" in
-    "start")
+case "${1:-backend}" in
+    "start"|"workers")
         start_all_workers
         ;;
+    "backend"|"full")
+        start_complete_backend
+        ;;
     "stop")
+        stop_complete_backend
+        ;;
+    "stop-workers")
         stop_all_workers
         ;;
     "restart")
+        restart_complete_backend
+        ;;
+    "restart-workers")
         restart_all_workers
         ;;
     "status")
@@ -335,18 +447,28 @@ case "${1:-start}" in
         test_workers
         ;;
     "help"|"-h"|"--help")
-        echo "Usage: $0 [start|stop|restart|status|logs [service]|test|help]"
+        echo "Usage: $0 [backend|workers|stop|restart|status|logs [service]|test|help]"
         echo ""
         echo "Commands:"
-        echo "  start     Start all workers"
-        echo "  stop      Stop all workers"
-        echo "  restart   Restart all workers"
-        echo "  status    Show worker status"
-        echo "  logs      View logs (optionally for specific service)"
-        echo "  test      Test worker dependencies"
-        echo "  help      Show this help message"
+        echo "  backend        Start complete backend (FastAPI + Workers) - DEFAULT"
+        echo "  workers        Start only worker processes"
+        echo "  stop           Stop complete backend (FastAPI + Workers)"
+        echo "  stop-workers   Stop only worker processes"
+        echo "  restart        Restart complete backend"
+        echo "  restart-workers Restart only worker processes"
+        echo "  status         Show service status"
+        echo "  logs           View logs (optionally for specific service)"
+        echo "  test           Test worker dependencies"
+        echo "  help           Show this help message"
         echo ""
-        echo "Services: transcription_direct, transcription_chunk, medical_extraction"
+        echo "Services: fastapi, transcription_direct, transcription_chunk, medical_extraction"
+        echo ""
+        echo "Examples:"
+        echo "  $0                    # Start complete backend (default)"
+        echo "  $0 backend           # Start complete backend"
+        echo "  $0 workers           # Start only workers"
+        echo "  $0 stop              # Stop everything"
+        echo "  $0 status            # Check status"
         ;;
     *)
         print_error "Unknown command: $1"
