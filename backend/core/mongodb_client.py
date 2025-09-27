@@ -602,7 +602,7 @@ class HybridStorageClient:
         
         # Fallback to MongoDB
         mongo_data = self.mongodb_client.get_medical_extraction(session_id)
-        if mongo_data:
+        if mongo_data and isinstance(mongo_data, dict):
             # Remove MongoDB-specific fields for compatibility
             mongo_data.pop("extracted_at", None)
             mongo_data.pop("updated_at", None)

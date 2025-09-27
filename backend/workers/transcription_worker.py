@@ -172,6 +172,24 @@ class FixedTranscriptionWorker(BaseWorker):
             logger.error(f"❌ Dependency check failed: {e}")
             return False
 
+    def _resolve_file_path(self, filepath: str) -> str:
+        """Resolve Docker paths to local paths"""
+        try:
+            # If it's a Docker path, convert to local path
+            if filepath.startswith('/app/'):
+                # Extract filename from Docker path
+                filename = os.path.basename(filepath)
+                # Convert to local path
+                local_path = os.path.join(self.config.UPLOAD_FOLDER, filename)
+                logger.info(f"🔄 Resolving Docker path: {filepath} -> {local_path}")
+                return local_path
+            else:
+                # Return original path if not a Docker path
+                return filepath
+        except Exception as e:
+            logger.error(f"Error resolving file path: {e}")
+            return filepath
+
     def transcribe_audio(self, audio_file_path: str, chunk_info: dict = None) -> dict:
         """FIXED: Enhanced transcribe method with better error handling and timeouts"""
         try:
@@ -482,13 +500,28 @@ class FixedTranscriptionWorker(BaseWorker):
                 "processing_started_at": datetime.utcnow().isoformat(),
             })
 
-            # FIXED: Check if input file exists with better error handling
+            # FIXED: Check if input file exists with better error handling and path resolution
             try:
+                logger.info(f"🔍 Checking file existence: {filepath}")
+                
+                # Check if file exists at the given path
                 if not os.path.exists(filepath):
-                    error_msg = f"Input file not found: {filepath}"
-                    logger.error(f"❌ {error_msg}")
-                    self.update_session_status(session_id, {"status": "error", "error": error_msg})
-                    return False
+                    logger.warning(f"⚠️ File not found at original path: {filepath}")
+                    
+                    # Try to resolve the path - convert Docker paths to local paths
+                    resolved_filepath = self._resolve_file_path(filepath)
+                    logger.info(f"🔍 Resolved path: {resolved_filepath}")
+                    
+                    if os.path.exists(resolved_filepath):
+                        logger.info(f"✅ File found at resolved path: {resolved_filepath}")
+                        filepath = resolved_filepath
+                    else:
+                        error_msg = f"Input file not found: {filepath} (also tried: {resolved_filepath})"
+                        logger.error(f"❌ {error_msg}")
+                        self.update_session_status(session_id, {"status": "error", "error": error_msg})
+                        return False
+                else:
+                    logger.info(f"✅ File found at original path: {filepath}")
 
                 # Check file size
                 file_size = os.path.getsize(filepath)
@@ -801,7 +834,14 @@ class FixedTranscriptionWorker(BaseWorker):
         while self.completion_checker_running:
             try:
                 # Check for sessions that might be ready for merging
-                session_keys = self.redis_client.client.keys("session_status:*")
+                # FIXED: Use SCAN instead of KEYS to avoid memory issues
+                session_keys = []
+                cursor = 0
+                while True:
+                    cursor, keys = self.redis_client.client.scan(cursor, match="session_status:*", count=100)
+                    session_keys.extend(keys)
+                    if cursor == 0:
+                        break
 
                 for key in session_keys:
                     if not self.completion_checker_running:

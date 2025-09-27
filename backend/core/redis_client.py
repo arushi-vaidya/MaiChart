@@ -67,16 +67,17 @@ class RedisClient:
             raise
 
     def read_stream(self, stream_name: str, consumer_group: str, consumer_name: str, count: int = 1, block: int = 1000) -> list:
-        """FIXED: Proper Redis stream reading"""
+        """FIXED: Simple and reliable Redis stream reading"""
         try:
             # Ensure consumer group exists
             try:
                 self.client.xgroup_create(stream_name, consumer_group, id="0", mkstream=True)
+                logger.info(f"✅ Created consumer group {consumer_group} for stream {stream_name}")
             except Exception as e:
                 if "BUSYGROUP" not in str(e):
                     logger.error(f"Error creating consumer group: {e}")
             
-            # Read from stream using ">" to get new messages
+            # SIMPLE FIX: Just read new messages using ">"
             result = self.client.xreadgroup(
                 consumer_group, 
                 consumer_name, 
@@ -85,7 +86,8 @@ class RedisClient:
                 block=block
             )
             
-            logger.debug(f"📨 Read {len(result)} messages from {stream_name}")
+            if result:
+                logger.info(f"📨 Read {len(result)} messages from {stream_name}")
             return result
             
         except Exception as e:
@@ -128,9 +130,12 @@ class RedisClient:
             for k, v in data.items():
                 try:
                     # FIXED: Handle different data types properly
-                    if isinstance(v, str):
-                        # Try to parse as JSON if it's a string
+                    if isinstance(v, str) and v.strip():
+                        # Try to parse as JSON if it's a non-empty string
                         result[k] = json.loads(v)
+                    elif isinstance(v, str):
+                        # Keep empty strings as strings
+                        result[k] = v
                     elif isinstance(v, (list, dict)):
                         # Already parsed, use as-is
                         result[k] = v

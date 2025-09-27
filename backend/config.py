@@ -9,6 +9,9 @@ BASE_DIR = Path(__file__).parent
 class Config:
     """Base configuration with MongoDB support - FIXED file size limits"""
 
+    # Base directory
+    BASE_DIR = BASE_DIR
+
     # FastAPI settings
     SECRET_KEY = os.environ.get("SECRET_KEY", "your-secret-key-here")
     DEBUG = os.environ.get("FASTAPI_DEBUG", "True").lower() == "true"

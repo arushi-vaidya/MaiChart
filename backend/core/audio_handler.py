@@ -8,7 +8,6 @@ from fastapi import UploadFile
 import logging
 import aiofiles
 from typing import List
-import aiofiles
 from .redis_client import RedisClient
 from .audio_chunker import AudioChunker
 
@@ -199,9 +198,15 @@ class AudioHandler:
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"Audio file not found for direct processing: {filepath}")
         
-        # FIXED: Add small delay to ensure file is fully written and synced
+        # FIXED: Use proper file synchronization instead of sleep
         import time
-        time.sleep(0.5)  # Wait 500ms for file system sync
+        max_retries = 10
+        for attempt in range(max_retries):
+            if os.path.exists(filepath) and os.path.getsize(filepath) == file_size:
+                break
+            time.sleep(0.1)  # Wait 100ms between checks
+        else:
+            raise FileNotFoundError(f"File not properly written after {max_retries} attempts: {filepath}")
         
         # Double-check file exists and has correct size
         if not os.path.exists(filepath):
@@ -299,12 +304,35 @@ class AudioHandler:
             # Clear any stuck messages first
             self._clear_stuck_messages()
             
+            # FIXED: Ensure we use the correct local path, not Docker paths
+            logger.info(f"🔍 DEBUG: Original filepath: {filepath} (type: {type(filepath)})")
+            
+            if isinstance(filepath, str):
+                # If it's a string path, convert to Path and ensure it's absolute
+                filepath = Path(filepath)
+                logger.info(f"🔍 DEBUG: Converted string to Path: {filepath}")
+            elif not isinstance(filepath, Path):
+                filepath = Path(str(filepath))
+                logger.info(f"🔍 DEBUG: Converted to Path: {filepath}")
+            
+            # Ensure the path is absolute and uses the correct base directory
+            if not filepath.is_absolute():
+                filepath = self.config.UPLOAD_FOLDER / filepath.name
+                logger.info(f"🔍 DEBUG: Made absolute: {filepath}")
+            elif str(filepath).startswith('/app/'):
+                # Replace Docker paths with local paths
+                old_path = str(filepath)
+                filepath = self.config.UPLOAD_FOLDER / filepath.name
+                logger.info(f"🔄 Converted Docker path {old_path} to local path: {filepath}")
+            else:
+                logger.info(f"🔍 DEBUG: No conversion needed: {filepath}")
+            
             # Prepare data for Redis stream
             audio_data = {
                 "session_id": session_id,
                 "timestamp": timestamp,
                 "filename": filename,
-                "filepath": str(filepath),  # Ensure string
+                "filepath": str(filepath),  # Ensure string with correct path
                 "file_size": str(file_size),  # Ensure string
                 "status": "uploaded",
                 "uploaded_at": datetime.utcnow().isoformat(),
@@ -765,9 +793,9 @@ class AudioHandler:
     def initialize_streaming_session(self, session_id: str) -> bool:
         """Initialize a new streaming session"""
         try:
-            # Create streaming session directory
-            streaming_dir = self.config.UPLOAD_FOLDER / f"streaming_{session_id}"
-            streaming_dir.mkdir(exist_ok=True)
+            # FIXED: Create streaming session directory in chunks folder
+            streaming_dir = self.config.CHUNKS_FOLDER / session_id
+            streaming_dir.mkdir(parents=True, exist_ok=True)
             
             # Initialize session status
             session_data = {
@@ -813,8 +841,18 @@ class AudioHandler:
             if chunk_sequence != expected_sequence:
                 logger.warning(f"⚠️ Unexpected chunk sequence for {session_id}: expected {expected_sequence}, got {chunk_sequence}")
             
-            # Create chunk filename
-            streaming_dir = Path(session_data["streaming_dir"])
+            # FIXED: Create chunk filename with correct local path
+            streaming_dir_str = session_data["streaming_dir"]
+            if streaming_dir_str.startswith('/app/'):
+                # Replace Docker paths with local paths
+                streaming_dir = self.config.CHUNKS_FOLDER / session_id
+                logger.info(f"🔄 Converted Docker streaming path to local: {streaming_dir}")
+            else:
+                streaming_dir = Path(streaming_dir_str)
+            
+            # Ensure the directory exists
+            streaming_dir.mkdir(parents=True, exist_ok=True)
+            
             chunk_filename = f"chunk_{chunk_sequence:03d}.webm"
             chunk_filepath = streaming_dir / chunk_filename
             
