@@ -437,6 +437,18 @@ class FixedTranscriptionWorker(BaseWorker):
             logger.error(f"❌ Error processing message: {e}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
+            
+            # FIXED: Update session status on error
+            session_id = message_data.get("session_id")
+            if session_id:
+                try:
+                    self.update_session_status(session_id, {
+                        "status": "error",
+                        "error": f"Worker error: {str(e)}"
+                    })
+                except Exception as status_e:
+                    logger.error(f"❌ Failed to update error status: {status_e}")
+            
             return False
 
     def _process_direct_message(self, message_data: dict) -> bool:
@@ -494,7 +506,7 @@ class FixedTranscriptionWorker(BaseWorker):
                 self.update_session_status(session_id, {"status": "error", "error": error_msg})
                 return False
 
-            # Update status to transcribing
+            # Update status to transcribing (only if we haven't already set an error)
             self.update_session_status(session_id, {
                 "status": "processing",
                 "step": "processing_audio",
@@ -743,100 +755,10 @@ class FixedTranscriptionWorker(BaseWorker):
             if self.worker_type == "chunk":
                 self.start_completion_checker()
 
-            # Clean up any pending messages from previous runs
-            self.cleanup_consumer_group()
-
-            # FIXED: Main processing loop with enhanced error handling
-            consecutive_errors = 0
-            max_consecutive_errors = 5
-            heartbeat_interval = 30  # Log heartbeat every 30 seconds
-            last_heartbeat = time.time()
-
-            logger.info(f"✅ {self.worker_name} ready to process messages")
-
-            while self.running:
-                try:
-                    # FIXED: Log heartbeat to show worker is alive
-                    current_time = time.time()
-                    if current_time - last_heartbeat >= heartbeat_interval:
-                        logger.info(f"💓 {self.worker_name} heartbeat - waiting for messages...")
-                        last_heartbeat = current_time
-
-                    # Read messages from Redis stream
-                    messages = self.redis_client.read_stream(
-                        self.stream_name,
-                        self.consumer_group,
-                        self.consumer_name,
-                        count=1,
-                        block=self.block_time,
-                    )
-
-                    if not messages:
-                        consecutive_errors = 0  # Reset error counter on successful read
-                        continue
-
-                    # Process each message
-                    for stream, stream_messages in messages:
-                        for message_id, fields in stream_messages:
-                            logger.info(f"📨 Processing message {message_id}")
-
-                            try:
-                                # Process the message
-                                success = self.process_message(fields)
-
-                                # FIXED: Always acknowledge the message regardless of success
-                                # This prevents stuck messages in the queue
-                                self.redis_client.acknowledge_message(
-                                    self.stream_name, self.consumer_group, message_id
-                                )
-                                
-                                if success:
-                                    logger.info(f"✅ Message {message_id} processed successfully and acknowledged")
-                                    consecutive_errors = 0  # Reset error counter on success
-                                else:
-                                    logger.error(f"❌ Message {message_id} failed but acknowledged to prevent queue blocking")
-
-                            except Exception as e:
-                                logger.error(f"❌ Error processing message {message_id}: {e}")
-
-                                # Try to update session status if we have session_id
-                                session_id = fields.get("session_id")
-                                if session_id:
-                                    try:
-                                        self.handle_message_error(session_id, e)
-                                    except Exception as status_e:
-                                        logger.error(f"❌ Failed to update error status: {status_e}")
-
-                                # FIXED: Still acknowledge the message to prevent queue blocking
-                                try:
-                                    self.redis_client.acknowledge_message(
-                                        self.stream_name, self.consumer_group, message_id
-                                    )
-                                    logger.info(f"❌ Failed message {message_id} acknowledged to prevent queue blocking")
-                                except Exception as ack_error:
-                                    logger.error(f"❌ Failed to acknowledge message {message_id}: {ack_error}")
-
-                                consecutive_errors += 1
-
-                except KeyboardInterrupt:
-                    logger.info("📨 Received keyboard interrupt")
-                    break
-                except Exception as e:
-                    logger.error(f"❌ Error in worker loop: {e}")
-                    consecutive_errors += 1
-                    
-                    # If we have too many consecutive errors, exit
-                    if consecutive_errors >= max_consecutive_errors:
-                        logger.error(f"❌ Too many consecutive errors ({consecutive_errors}), exiting")
-                        break
-                        
-                    # Exponential backoff with max
-                    sleep_time = min(5 * consecutive_errors, 30)
-                    logger.info(f"⏳ Sleeping {sleep_time}s before retry...")
-                    time.sleep(sleep_time)
-
-            logger.info(f"🛑 {self.worker_name} stopped")
-            return 0
+            # FIXED: Use the base class run method which has the proper Redis stream handling
+            result = super().run()
+            
+            return result
 
         except Exception as e:
             logger.error(f"❌ Fatal error in enhanced worker run: {e}")

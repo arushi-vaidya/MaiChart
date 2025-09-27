@@ -195,9 +195,23 @@ class AudioHandler:
         self, session_id, filename, filepath, file_size, timestamp, duration
     ):
         """Process small audio files directly (original method)"""
-        # FIXED: Verify file exists before queuing
+        # FIXED: Verify file exists and is fully written before queuing
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"Audio file not found for direct processing: {filepath}")
+        
+        # FIXED: Add small delay to ensure file is fully written and synced
+        import time
+        time.sleep(0.5)  # Wait 500ms for file system sync
+        
+        # Double-check file exists and has correct size
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Audio file disappeared after sync delay: {filepath}")
+        
+        actual_size = os.path.getsize(filepath)
+        if actual_size != file_size:
+            logger.warning(f"File size mismatch after sync: expected {file_size}, got {actual_size}")
+            file_size = actual_size
+        
         try:
             # Queue for direct processing
             stream_id = self.queue_for_processing(
@@ -297,24 +311,26 @@ class AudioHandler:
                 "type": "direct_processing",
             }
 
-            # Add to Redis stream
-            stream_name = self.config.AUDIO_INPUT_STREAM
-            stream_id = self.redis_client.add_to_stream(stream_name, audio_data)
-
-            # Set initial session status
-            self.redis_client.set_session_status(
+            # Set initial session status BEFORE adding to stream to prevent race condition
+            # Use update_session_status to avoid overwriting existing statuses
+            self.redis_client.update_session_status(
                 session_id,
                 {
                     "status": "queued",
-                    "stream_id": stream_id,
                     "queued_at": datetime.utcnow().isoformat(),
                     "filename": filename,
                     "file_size": file_size,
                     "filepath": str(filepath),
                     "original_format": self.get_file_extension(filename).lstrip("."),
-                },
-                expire_seconds=self.config.SESSION_EXPIRE_TIME,
+                }
             )
+
+            # Add to Redis stream
+            stream_name = self.config.AUDIO_INPUT_STREAM
+            stream_id = self.redis_client.add_to_stream(stream_name, audio_data)
+            
+            # Update session with stream_id
+            self.redis_client.update_session_status(session_id, {"stream_id": stream_id})
 
             logger.info(f"📤 QUEUED FOR PROCESSING: {session_id} -> {stream_id}")
             logger.info(f"🎯 Stream: {stream_name}, Group: {self.config.CONSUMER_GROUP}")
