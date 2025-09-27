@@ -900,17 +900,75 @@ class AudioHandler:
                 "processing_triggered": False
             }
             
-            # If this is the last chunk, trigger processing
+            # FIXED: Process each chunk individually for real-time transcription
+            chunk_processing_success = self._queue_individual_chunk_for_processing(
+                session_id, chunk_filename, str(chunk_filepath), file_size, chunk_sequence
+            )
+            result["processing_triggered"] = chunk_processing_success
+            
+            if chunk_processing_success:
+                logger.info(f"📤 Chunk {chunk_sequence} queued for immediate transcription: {session_id}")
+            else:
+                logger.error(f"❌ Failed to queue chunk {chunk_sequence} for transcription: {session_id}")
+            
+            # If this is the last chunk, also trigger final processing
             if is_last_chunk:
                 success = self._finalize_streaming_session(session_id)
-                result["processing_triggered"] = success
-                logger.info(f"🏁 Last chunk received for {session_id}, processing {'triggered' if success else 'failed'}")
+                logger.info(f"🏁 Last chunk received for {session_id}, final processing {'triggered' if success else 'failed'}")
             
             return result
             
         except Exception as e:
             logger.error(f"❌ Error saving streaming chunk: {e}")
             raise
+
+    def _queue_individual_chunk_for_processing(self, session_id: str, chunk_filename: str, 
+                                            chunk_filepath: str, file_size: int, 
+                                            chunk_sequence: int) -> bool:
+        """Queue individual streaming chunk for immediate transcription"""
+        try:
+            # Prepare chunk data for Redis stream
+            chunk_data = {
+                "session_id": session_id,
+                "chunk_id": f"{session_id}_chunk_{chunk_sequence:03d}",
+                "chunk_index": chunk_sequence,
+                "chunk_path": chunk_filepath,
+                "filename": chunk_filename,
+                "file_size": str(file_size),
+                "start_time": chunk_sequence * 10.0,  # Approximate start time (10 seconds per chunk)
+                "end_time": (chunk_sequence + 1) * 10.0,  # Approximate end time
+                "duration": 10.0,  # Approximate duration
+                "queued_at": datetime.utcnow().isoformat(),
+                "type": "streaming_chunk_processing",
+                "streaming_session": "true"
+            }
+
+            # Add to chunk processing stream
+            chunk_stream = self.config.AUDIO_CHUNK_STREAM
+            stream_id = self.redis_client.add_to_stream(chunk_stream, chunk_data)
+
+            # Store chunk status
+            chunk_status_key = f"chunk_status:{chunk_data['chunk_id']}"
+            self.redis_client.client.hset(
+                chunk_status_key,
+                mapping={
+                    "status": "queued",
+                    "stream_id": stream_id,
+                    "session_id": session_id,
+                    "chunk_sequence": chunk_sequence,
+                    "queued_at": datetime.utcnow().isoformat(),
+                },
+            )
+            self.redis_client.client.expire(
+                chunk_status_key, self.config.SESSION_EXPIRE_TIME
+            )
+
+            logger.info(f"📤 Queued streaming chunk {chunk_sequence} -> {stream_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Error queuing individual chunk: {e}")
+            return False
 
     def _finalize_streaming_session(self, session_id: str) -> bool:
         """Finalize streaming session and trigger processing"""

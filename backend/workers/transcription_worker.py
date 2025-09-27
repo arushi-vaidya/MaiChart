@@ -443,7 +443,7 @@ class FixedTranscriptionWorker(BaseWorker):
             message_type = message_data.get("type", "direct_processing")
             logger.info(f"📨 Processing message type: {message_type}")
 
-            if message_type == "chunk_processing":
+            if message_type in ["chunk_processing", "streaming_chunk_processing"]:
                 result = self._process_chunk_message(message_data)
             else:
                 result = self._process_direct_message(message_data)
@@ -624,6 +624,11 @@ class FixedTranscriptionWorker(BaseWorker):
 
             logger.info(f"🎯 Processing chunk {chunk_id} for session {session_id}")
             logger.info(f"📁 Chunk file: {chunk_path}")
+            
+            # Check if this is a streaming chunk
+            is_streaming_chunk = message_data.get("streaming_session") == "true"
+            if is_streaming_chunk:
+                logger.info(f"🌊 Processing streaming chunk {chunk_index} for session {session_id}")
 
             # FIXED: Validate required fields
             if not all([session_id, chunk_id, chunk_path]):
@@ -708,8 +713,14 @@ class FixedTranscriptionWorker(BaseWorker):
                 logger.info(f"✅ Chunk {chunk_id} transcribed successfully!")
                 logger.info(f"📊 Chunk stats: {len(transcript_result['text'])} chars, {transcript_result.get('words', 0)} words")
 
-                # FIXED: Check if all chunks are complete and queue medical extraction
-                self._check_and_queue_chunked_medical_extraction(session_id)
+                # Handle streaming vs regular chunked processing
+                if is_streaming_chunk:
+                    # For streaming chunks, immediately queue medical extraction for this chunk
+                    logger.info(f"🌊 Queueing medical extraction for streaming chunk {chunk_index}")
+                    self._queue_streaming_chunk_medical_extraction(session_id, chunk_id, transcript_result)
+                else:
+                    # For regular chunked processing, check if all chunks are complete
+                    self._check_and_queue_chunked_medical_extraction(session_id)
 
                 return True
             else:
@@ -744,6 +755,44 @@ class FixedTranscriptionWorker(BaseWorker):
                 except Exception as status_e:
                     logger.error(f"❌ Error updating error chunk status: {status_e}")
 
+            return False
+
+    def _queue_streaming_chunk_medical_extraction(self, session_id: str, chunk_id: str, transcript_result: dict):
+        """Queue medical extraction for individual streaming chunk"""
+        try:
+            transcript_text = transcript_result.get("text", "")
+            if not transcript_text.strip():
+                logger.warning(f"⚠️ Empty transcript for streaming chunk {chunk_id}, skipping medical extraction")
+                return False
+            
+            logger.info(f"🌊 Queueing medical extraction for streaming chunk {chunk_id}")
+            
+            # Queue medical extraction for this specific chunk
+            medical_data = {
+                "session_id": session_id,
+                "chunk_id": chunk_id,
+                "transcript_text": transcript_text,
+                "source": "streaming_chunk",
+                "chunk_index": transcript_result.get("chunk_index", 0),
+                "queued_at": datetime.utcnow().isoformat(),
+            }
+
+            medical_stream = self.config.MEDICAL_EXTRACTION_STREAM
+            stream_id = self.redis_client.add_to_stream(medical_stream, medical_data)
+            
+            # Update chunk status with medical extraction info
+            chunk_status_key = f"chunk_status:{chunk_id}"
+            self.redis_client.client.hset(chunk_status_key, mapping={
+                "medical_extraction_queued": "true",
+                "medical_extraction_stream_id": stream_id,
+                "medical_extraction_queued_at": datetime.utcnow().isoformat(),
+            })
+
+            logger.info(f"📤 Medical extraction queued for streaming chunk {chunk_id} -> {stream_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Error queueing streaming chunk medical extraction: {e}")
             return False
 
     def _check_and_queue_chunked_medical_extraction(self, session_id: str):
