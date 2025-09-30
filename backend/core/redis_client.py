@@ -17,24 +17,38 @@ class RedisClient:
         self.db = db
 
         try:
-            # Redis Cloud connection - no SSL needed for this instance
-            self.client = redis.Redis(
-                host=host,
-                port=port,
-                password=password,
-                db=db,
-                decode_responses=decode_responses,
-                socket_connect_timeout=10,
-                socket_timeout=10,
-                ssl=False,  # SSL not needed for this Redis Cloud instance
-            )
-
-            # Test connection
-            self.client.ping()
-            logger.info(f"Connected to Redis at {host}:{port}")
+            # Redis Cloud connection with proper SSL and authentication
+            connection_kwargs = {
+                'host': host,
+                'port': port,
+                'db': db,
+                'decode_responses': decode_responses,
+                'socket_connect_timeout': 10,
+                'socket_timeout': 10,
+            }
+            
+            # Add password if provided
+            if password:
+                connection_kwargs['password'] = password
+            
+            # Redis Cloud typically uses SSL, but check if SSL is needed
+            # For now, we'll try without SSL first, then with SSL if connection fails
+            try:
+                self.client = redis.Redis(**connection_kwargs)
+                # Test connection
+                self.client.ping()
+                logger.info(f"Connected to Redis Cloud at {host}:{port} (no SSL)")
+            except redis.ConnectionError:
+                # Try with SSL if first attempt fails
+                connection_kwargs['ssl'] = True
+                connection_kwargs['ssl_cert_reqs'] = None
+                self.client = redis.Redis(**connection_kwargs)
+                # Test connection
+                self.client.ping()
+                logger.info(f"Connected to Redis Cloud at {host}:{port} (with SSL)")
 
         except redis.ConnectionError as e:
-            logger.error(f"Failed to connect to Redis: {e}")
+            logger.error(f"Failed to connect to Redis Cloud: {e}")
             raise
 
     def ping(self) -> bool:

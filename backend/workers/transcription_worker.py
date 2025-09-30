@@ -173,7 +173,7 @@ class FixedTranscriptionWorker(BaseWorker):
             return False
 
     def _resolve_file_path(self, filepath: str) -> str:
-        """Resolve Docker paths to local paths"""
+        """Resolve Docker paths to local paths and handle absolute paths"""
         try:
             # If it's a Docker path, convert to local path
             if filepath.startswith('/app/'):
@@ -183,6 +183,21 @@ class FixedTranscriptionWorker(BaseWorker):
                 local_path = os.path.join(self.config.UPLOAD_FOLDER, filename)
                 logger.info(f"🔄 Resolving Docker path: {filepath} -> {local_path}")
                 return local_path
+            elif filepath.startswith('/Users/'):
+                # It's already a local absolute path, check if it exists
+                if os.path.exists(filepath):
+                    logger.info(f"✅ Using absolute local path: {filepath}")
+                    return filepath
+                else:
+                    # Try to find the file in uploads folder
+                    filename = os.path.basename(filepath)
+                    local_path = os.path.join(self.config.UPLOAD_FOLDER, filename)
+                    if os.path.exists(local_path):
+                        logger.info(f"🔄 Found file in uploads folder: {filepath} -> {local_path}")
+                        return local_path
+                    else:
+                        logger.warning(f"⚠️ File not found in either location: {filepath}")
+                        return filepath
             else:
                 # Return original path if not a Docker path
                 return filepath
@@ -462,6 +477,10 @@ class FixedTranscriptionWorker(BaseWorker):
                     })
                 return False
 
+            # FIXED: Resolve file path to handle Docker/local path differences
+            resolved_filepath = self._resolve_file_path(filepath)
+            logger.info(f"🔄 Resolved path: {resolved_filepath}")
+
             # Update to processing
             self.update_session_status(session_id, {
                 "status": "processing",
@@ -469,9 +488,9 @@ class FixedTranscriptionWorker(BaseWorker):
                 "processing_started_at": datetime.utcnow().isoformat(),
             })
 
-            # Simple file check
-            if not os.path.exists(filepath):
-                error_msg = f"File not found: {filepath}"
+            # Simple file check with resolved path
+            if not os.path.exists(resolved_filepath):
+                error_msg = f"Input file not found: {resolved_filepath}"
                 logger.error(f"❌ {error_msg}")
                 self.update_session_status(session_id, {
                     "status": "error",
@@ -479,7 +498,7 @@ class FixedTranscriptionWorker(BaseWorker):
                 })
                 return False
 
-            file_size = os.path.getsize(filepath)
+            file_size = os.path.getsize(resolved_filepath)
             if file_size == 0:
                 error_msg = "File is empty"
                 logger.error(f"❌ {error_msg}")
@@ -495,7 +514,7 @@ class FixedTranscriptionWorker(BaseWorker):
                 "step": "processing_audio",
             })
 
-            transcript_result = self.transcribe_audio(filepath)
+            transcript_result = self.transcribe_audio(resolved_filepath)
 
             if transcript_result["status"] == "completed":
                 self.update_session_status(session_id, {

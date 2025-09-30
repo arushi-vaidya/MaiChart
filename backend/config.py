@@ -16,10 +16,11 @@ class Config:
     HOST = "0.0.0.0"
     PORT = int(os.environ.get("FASTAPI_PORT", 5001))
     
-    # Redis settings - Docker service name
-    REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
+    # Redis settings - Redis Cloud configuration
+    REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
     REDIS_PORT = int(os.environ.get("REDIS_PORT", 6379))
     REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", None)
+    REDIS_USERNAME = os.environ.get("REDIS_USERNAME", None)
     REDIS_DB = int(os.environ.get("REDIS_DB", 0))
     
     # MongoDB settings - Docker service name

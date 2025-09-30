@@ -25,14 +25,22 @@ LOG_DIR="$SCRIPT_DIR/logs"
 PID_DIR="$SCRIPT_DIR/pids"
 
 # Load environment variables from .env file
+# Check both backend directory and parent directory
+ENV_FILE=""
 if [[ -f "$SCRIPT_DIR/.env" ]]; then
-    print_info "Loading environment variables from .env file..."
+    ENV_FILE="$SCRIPT_DIR/.env"
+elif [[ -f "$SCRIPT_DIR/../.env" ]]; then
+    ENV_FILE="$SCRIPT_DIR/../.env"
+fi
+
+if [[ -n "$ENV_FILE" ]]; then
+    print_info "Loading environment variables from $ENV_FILE..."
     set -a  # automatically export all variables
-    source "$SCRIPT_DIR/.env"
+    source "$ENV_FILE"
     set +a  # stop automatically exporting
     print_status "Environment variables loaded"
 else
-    print_warning "No .env file found at $SCRIPT_DIR/.env"
+    print_warning "No .env file found in backend directory or parent directory"
 fi
 
 # Ensure directories exist
@@ -380,22 +388,64 @@ test_workers() {
     if python3 -c "
 import redis
 import os
+import sys
+
 try:
-    r = redis.Redis(
-        host=os.getenv('REDIS_HOST', 'localhost'), 
-        port=int(os.getenv('REDIS_PORT', 6379)),
-        password=os.getenv('REDIS_PASSWORD'),
-        db=int(os.getenv('REDIS_DB', 0))
-    )
-    r.ping()
-    print('✅ Redis connection successful')
+    # Get Redis configuration
+    host = os.getenv('REDIS_HOST', 'localhost')
+    port = int(os.getenv('REDIS_PORT', 6379))
+    password = os.getenv('REDIS_PASSWORD')
+    db = int(os.getenv('REDIS_DB', 0))
+    
+    print(f'Connecting to Redis Cloud: {host}:{port} (DB: {db})')
+    
+    # Try connection without SSL first
+    try:
+        r = redis.Redis(
+            host=host,
+            port=port,
+            password=password,
+            db=db,
+            decode_responses=True,
+            socket_connect_timeout=10,
+            socket_timeout=10
+        )
+        r.ping()
+        print('✅ Redis Cloud connection successful (no SSL)')
+    except redis.ConnectionError:
+        # Try with SSL
+        print('Trying with SSL...')
+        r = redis.Redis(
+            host=host,
+            port=port,
+            password=password,
+            db=db,
+            decode_responses=True,
+            socket_connect_timeout=10,
+            socket_timeout=10,
+            ssl=True,
+            ssl_cert_reqs=None
+        )
+        r.ping()
+        print('✅ Redis Cloud connection successful (with SSL)')
+    
+    # Test basic operations
+    r.set('test_key', 'test_value', ex=60)
+    value = r.get('test_key')
+    if value == 'test_value':
+        print('✅ Redis Cloud read/write test successful')
+        r.delete('test_key')
+    else:
+        print('❌ Redis Cloud read/write test failed')
+        sys.exit(1)
+        
 except Exception as e:
-    print(f'❌ Redis connection failed: {e}')
-    exit(1)
+    print(f'❌ Redis Cloud connection failed: {e}')
+    sys.exit(1)
 "; then
-        print_status "Redis connection test passed"
+        print_status "Redis Cloud connection test passed"
     else
-        print_error "Redis connection test failed"
+        print_error "Redis Cloud connection test failed"
         return 1
     fi
     

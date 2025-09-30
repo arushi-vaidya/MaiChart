@@ -23,7 +23,7 @@ class AudioHandler:
     def __init__(self, config):
         self.config = config
         
-        # Enhanced Redis client with password
+        # Redis client
         self.redis_client = RedisClient(
             host=config.REDIS_HOST,
             port=config.REDIS_PORT,
@@ -31,22 +31,51 @@ class AudioHandler:
             db=config.REDIS_DB,
         )
 
-        # Initialize chunker for long audio files
+        # Initialize chunker
         self.chunker = AudioChunker(
             chunks_folder=config.CHUNKS_FOLDER,
             chunk_duration=config.CHUNK_DURATION,
             overlap=config.CHUNK_OVERLAP,
         )
+        
+        # CRITICAL: Ensure streams exist
+        self._ensure_streams_exist()
+
+    def _ensure_streams_exist(self):
+        """CRITICAL: Create Redis streams if they don't exist"""
+        try:
+            streams = [
+                (self.config.AUDIO_INPUT_STREAM, self.config.CONSUMER_GROUP),
+                (self.config.AUDIO_CHUNK_STREAM, self.config.CHUNK_CONSUMER_GROUP),
+                (self.config.MEDICAL_EXTRACTION_STREAM, self.config.MEDICAL_EXTRACTION_CONSUMER_GROUP),
+            ]
+            
+            for stream_name, consumer_group in streams:
+                try:
+                    # Try to create consumer group (will create stream if needed)
+                    self.redis_client.client.xgroup_create(
+                        stream_name, consumer_group, id="$", mkstream=True
+                    )
+                    logger.info(f"✅ Created stream {stream_name} with group {consumer_group}")
+                except Exception as e:
+                    if "BUSYGROUP" in str(e):
+                        logger.info(f"✅ Stream {stream_name} already exists")
+                    else:
+                        logger.warning(f"⚠️ Stream creation warning for {stream_name}: {e}")
+                        
+        except Exception as e:
+            logger.error(f"❌ Error ensuring streams exist: {e}")
 
     async def save_uploaded_file(self, file: UploadFile, timestamp=None):
-        """FIXED: Simple Docker path handling"""
+        """FIXED: Robust file upload with proper validation"""
+        session_id = None
         try:
             session_id = str(uuid.uuid4())
             
             if timestamp is None:
                 timestamp = str(int(time.time() * 1000))
 
-            # Simple filename construction
+            # Get file extension
             file_extension = self.get_file_extension(file.filename)
             filename = f"{session_id}_{timestamp}{file_extension}"
             filepath = self.config.UPLOAD_FOLDER / filename
@@ -54,40 +83,83 @@ class AudioHandler:
             # Ensure directory exists
             self.config.UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
-            # Save file
+            # CRITICAL: Save file with validation
             await file.seek(0)
-            file_size = 0
+            file_content = await file.read()
             
+            if not file_content or len(file_content) == 0:
+                raise ValueError("Uploaded file is empty")
+            
+            file_size = len(file_content)
+            
+            # Write file
             async with aiofiles.open(filepath, 'wb') as f:
-                content = await file.read()
-                if not content:
-                    raise ValueError("Uploaded file is empty")
-                await f.write(content)
-                file_size = len(content)
+                await f.write(file_content)
             
-            # Verify file saved
+            # CRITICAL: Verify file saved
             if not filepath.exists():
                 raise FileNotFoundError(f"File not saved: {filepath}")
                 
             actual_size = filepath.stat().st_size
             if actual_size == 0:
                 raise ValueError("Saved file is empty")
+            
+            if actual_size != file_size:
+                logger.warning(f"⚠️ Size mismatch: {file_size} != {actual_size}")
 
-            # Get duration
-            duration = self.chunker.get_audio_duration(str(filepath))
+            logger.info(f"✅ Saved: {filepath} ({actual_size} bytes)")
 
-            logger.info(f"📊 Saved: {filepath} ({actual_size} bytes, {duration:.1f}s)")
+            # Get duration (with error handling)
+            try:
+                duration = self.chunker.get_audio_duration(str(filepath))
+            except Exception as e:
+                logger.warning(f"⚠️ Duration detection failed: {e}")
+                duration = 0.0
+
+            # CRITICAL: Set initial session status BEFORE queueing
+            initial_status = {
+                "session_id": session_id,
+                "status": "uploaded",
+                "filename": filename,
+                "filepath": str(filepath),
+                "file_size": actual_size,
+                "audio_duration": duration,
+                "uploaded_at": datetime.utcnow().isoformat(),
+                "original_format": file_extension.lstrip("."),
+            }
+            
+            self.redis_client.set_session_status(
+                session_id, 
+                initial_status,
+                expire_seconds=self.config.SESSION_EXPIRE_TIME
+            )
+            
+            logger.info(f"✅ Initial status set for {session_id}")
 
             # Decide processing strategy
-            if self.chunker.should_chunk_audio(str(filepath), self.config.CHUNK_DURATION):
-                logger.info("🚛 Using chunked processing")
-                return self._process_chunked_audio(session_id, filename, filepath, actual_size, timestamp, duration)
+            if duration > 300 or actual_size > (50 * 1024 * 1024):  # 5 min or 50MB
+                logger.info(f"🚛 Using chunked processing for {session_id}")
+                return self._process_chunked_audio(
+                    session_id, filename, filepath, actual_size, timestamp, duration
+                )
             else:
-                logger.info("🚗 Using direct processing")
-                return self._process_direct_audio(session_id, filename, filepath, actual_size, timestamp, duration)
+                logger.info(f"🚗 Using direct processing for {session_id}")
+                return self._process_direct_audio(
+                    session_id, filename, filepath, actual_size, timestamp, duration
+                )
 
         except Exception as e:
             logger.error(f"❌ Save error: {e}")
+            # Update status to error if session was created
+            if session_id:
+                try:
+                    self.redis_client.update_session_status(session_id, {
+                        "status": "error",
+                        "error": str(e),
+                        "error_at": datetime.utcnow().isoformat()
+                    })
+                except:
+                    pass
             raise
 
     def _process_chunked_audio(
@@ -160,23 +232,36 @@ class AudioHandler:
             raise
 
     def _process_direct_audio(self, session_id, filename, filepath, file_size, timestamp, duration):
-        """FIXED: Direct processing with simple paths"""
+        """FIXED: Direct processing with robust error handling"""
         try:
             # Verify file exists
             if not os.path.exists(filepath):
                 raise FileNotFoundError(f"File not found: {filepath}")
             
-            # Queue for processing - filepath as string
+            # Update status to queuing
+            self.redis_client.update_session_status(session_id, {
+                "status": "queuing",
+                "processing_strategy": "direct",
+            })
+            
+            # Queue for processing
             stream_id = self.queue_for_processing(
                 session_id, filename, str(filepath), file_size, timestamp
             )
+            
+            if not stream_id:
+                raise Exception("Failed to queue for processing")
+            
+            logger.info(f"✅ Queued {session_id} -> {stream_id}")
 
             # Update with duration
             self.redis_client.update_session_status(
                 session_id, {
-                    "processing_strategy": "direct",
+                    "status": "queued",
+                    "stream_id": stream_id,
                     "audio_duration": duration,
-                    "duration": duration
+                    "duration": duration,
+                    "queued_at": datetime.utcnow().isoformat(),
                 }
             )
 
@@ -193,6 +278,11 @@ class AudioHandler:
 
         except Exception as e:
             logger.error(f"❌ Direct processing error: {e}")
+            self.redis_client.update_session_status(session_id, {
+                "status": "error",
+                "error": f"Queue failed: {str(e)}",
+                "error_at": datetime.utcnow().isoformat()
+            })
             raise
 
     def _queue_chunks_for_processing(self, session_id, chunks_info):
@@ -243,53 +333,41 @@ class AudioHandler:
             return 0
 
     def queue_for_processing(self, session_id, filename, filepath, file_size, timestamp):
-        """FIXED: Set session status AFTER successful queue addition"""
+        """FIXED: Robust queueing with proper error handling"""
         try:
             # Prepare data for Redis stream
             audio_data = {
                 "session_id": session_id,
                 "timestamp": timestamp,
                 "filename": filename,
-                "filepath": str(filepath),  # Ensure string
+                "filepath": str(filepath),
                 "file_size": str(file_size),
-                "status": "uploaded",
-                "uploaded_at": datetime.utcnow().isoformat(),
+                "status": "queued",
+                "queued_at": datetime.utcnow().isoformat(),
                 "type": "direct_processing",
             }
 
-            # Add to Redis stream FIRST
+            # CRITICAL: Add to Redis stream
             stream_name = self.config.AUDIO_INPUT_STREAM
+            
+            # Ensure stream exists before adding
+            try:
+                self.redis_client.client.xlen(stream_name)
+            except:
+                logger.warning(f"⚠️ Stream {stream_name} doesn't exist, creating...")
+                self._ensure_streams_exist()
+            
             stream_id = self.redis_client.add_to_stream(stream_name, audio_data)
             
-            # ONLY set status AFTER successful queue addition
-            self.redis_client.set_session_status(
-                session_id,
-                {
-                    "status": "queued",
-                    "queued_at": datetime.utcnow().isoformat(),
-                    "filename": filename,
-                    "file_size": file_size,
-                    "filepath": str(filepath),
-                    "original_format": self.get_file_extension(filename).lstrip("."),
-                    "stream_id": stream_id,
-                },
-                expire_seconds=self.config.SESSION_EXPIRE_TIME
-            )
-
-            logger.info(f"📤 QUEUED: {session_id} -> {stream_id}")
+            if not stream_id:
+                raise Exception("Stream ID is None")
+            
+            logger.info(f"✅ Added to stream {stream_name}: {stream_id}")
+            
             return stream_id
 
         except Exception as e:
-            logger.error(f"❌ Error queuing: {e}")
-            # Update status to error if queueing fails
-            try:
-                self.redis_client.update_session_status(session_id, {
-                    "status": "error",
-                    "error": f"Failed to queue: {str(e)}",
-                    "error_at": datetime.utcnow().isoformat()
-                })
-            except:
-                pass
+            logger.error(f"❌ Queue error: {e}")
             raise
 
     def get_session_status(self, session_id):
@@ -630,8 +708,7 @@ class AudioHandler:
     def get_file_extension(filename):
         """Get file extension from filename"""
         if not filename:
-            return ".webm"  # Default
-
+            return ".webm"
         return Path(filename).suffix.lower() or ".webm"
 
     @staticmethod
@@ -639,7 +716,6 @@ class AudioHandler:
         """Check if file extension is allowed"""
         if not filename:
             return False
-
         extension = Path(filename).suffix.lower().lstrip(".")
         return extension in config.ALLOWED_EXTENSIONS
 

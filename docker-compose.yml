@@ -1,24 +1,6 @@
-# docker-compose.yml - FIXED with Redis service
-version: "3.8"
+# docker-compose.yml - UPDATED for Redis Cloud
 
 services:
-  # Redis Service - ADDED
-  redis:
-    image: redis:7-alpine
-    container_name: maichart_redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - maichart_network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    command: redis-server --appendonly yes
 
   # MongoDB Database
   mongodb:
@@ -57,17 +39,18 @@ services:
       - "./backend/chunks:/app/chunks"
       - "./backend/logs:/app/logs"
     env_file:
-      - .env
+      - ./backend/.env
     environment:
       - FASTAPI_HOST=0.0.0.0
-      - REDIS_HOST=redis
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=${REDIS_DB}
       - MONGODB_CONNECTION_STRING=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/${MONGODB_DATABASE_NAME}?authSource=admin
       - MEDICAL_EXTRACTION_STREAM=medical_extraction_queue
       - MEDICAL_EXTRACTION_CONSUMER_GROUP=medical_extractors
     restart: unless-stopped
     depends_on:
-      redis:
-        condition: service_healthy
       mongodb:
         condition: service_healthy
     healthcheck:
@@ -91,18 +74,19 @@ services:
       - "./backend/chunks:/app/chunks"
       - "./backend/logs:/app/logs"
     env_file:
-      - .env
+      - ./backend/.env
     environment:
       - WORKER_TYPE=direct
       - PYTHONUNBUFFERED=1
-      - REDIS_HOST=redis
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=${REDIS_DB}
       - MONGODB_CONNECTION_STRING=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/${MONGODB_DATABASE_NAME}?authSource=admin
     command: python workers/transcription_worker.py direct
     restart: unless-stopped
     depends_on:
       backend:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     networks:
       - maichart_network
@@ -119,18 +103,19 @@ services:
       - "./backend/chunks:/app/chunks"
       - "./backend/logs:/app/logs"
     env_file:
-      - .env
+      - ./backend/.env
     environment:
       - WORKER_TYPE=chunk
       - PYTHONUNBUFFERED=1
-      - REDIS_HOST=redis
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=${REDIS_DB}
       - MONGODB_CONNECTION_STRING=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/${MONGODB_DATABASE_NAME}?authSource=admin
     command: python workers/transcription_worker.py chunk
     restart: unless-stopped
     depends_on:
       backend:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     networks:
       - maichart_network
@@ -147,11 +132,14 @@ services:
       - "./backend/chunks:/app/chunks"
       - "./backend/logs:/app/logs"
     env_file:
-      - .env
+      - ./backend/.env
     environment:
       - WORKER_TYPE=medical_extraction
       - PYTHONUNBUFFERED=1
-      - REDIS_HOST=redis
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=${REDIS_DB}
       - MONGODB_CONNECTION_STRING=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/${MONGODB_DATABASE_NAME}?authSource=admin
       - MEDICAL_EXTRACTION_STREAM=medical_extraction_queue
       - MEDICAL_EXTRACTION_CONSUMER_GROUP=medical_extractors
@@ -159,8 +147,6 @@ services:
     restart: unless-stopped
     depends_on:
       backend:
-        condition: service_healthy
-      redis:
         condition: service_healthy
       mongodb:
         condition: service_healthy
@@ -192,6 +178,4 @@ networks:
 
 volumes:
   mongodb_data:
-    driver: local
-  redis_data:
     driver: local
