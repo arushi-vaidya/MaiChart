@@ -32,12 +32,21 @@ async def initialize_streaming_session(
 ):
     """Initialize a new streaming session"""
     try:
-        # Get session_id from request body
-        body = await request.json()
-        session_id = body.get("session_id")
+        import uuid
         
+        # Try to get session_id from request body, generate one if not provided
+        session_id = None
+        try:
+            body = await request.json()
+            session_id = body.get("session_id") if body else None
+        except Exception:
+            # If JSON parsing fails (empty body), continue with None
+            pass
+        
+        # Generate a new session_id if none provided
         if not session_id:
-            raise HTTPException(status_code=400, detail="session_id is required")
+            session_id = str(uuid.uuid4())
+            logger.info(f"Generated new session_id: {session_id}")
         
         audio_handler = AudioHandler(config)
         success = audio_handler.initialize_streaming_session(session_id)
